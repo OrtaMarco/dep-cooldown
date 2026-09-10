@@ -1,0 +1,66 @@
+{
+  "name": "dep-cooldown",
+  "version": "0.1.0",
+  "description": "Audit the dependency cooldown (min-release-age) of a JavaScript project from its lockfile: publish dates, age in days, provenance, deprecations, and ready-to-paste config for npm, pnpm, Yarn and Bun.",
+  "keywords": [
+    "cooldown",
+    "min-release-age",
+    "minimumReleaseAge",
+    "supply-chain",
+    "security",
+    "lockfile",
+    "provenance",
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "audit"
+  ],
+  "license": "MIT",
+  "author": "Marco Orta <contacto@ortamarco.me>",
+  "homepage": "https://github.com/OrtaMarco/dep-cooldown#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OrtaMarco/dep-cooldown.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OrtaMarco/dep-cooldown/issues"
+  },
+  "type": "module",
+  "bin": {
+    "dep-cooldown": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.js",
+    "test:network": "DEP_COOLDOWN_NETWORK=1 node --test test/*.test.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && node --test test/*.test.js"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
+}
