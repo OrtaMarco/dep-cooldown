@@ -1,0 +1,30 @@
+{
+  "name": "has-flag",
+  "_id": "has-flag",
+  "dist-tags": {
+    "latest": "3.0.0"
+  },
+  "time": {
+    "created": "2014-01-01T00:00:00.000Z",
+    "modified": "2017-06-01T00:00:00.000Z",
+    "0.0.1": "2014-01-01T00:00:00.000Z",
+    "3.0.0": "2017-06-01T00:00:00.000Z"
+  },
+  "versions": {
+    "0.0.1": {
+      "name": "has-flag",
+      "version": "0.0.1",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/has-flag/-/x.tgz"
+      }
+    },
+    "3.0.0": {
+      "name": "has-flag",
+      "version": "3.0.0",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/has-flag/-/x.tgz",
+        "integrity": "sha512-fixture"
+      }
+    }
+  }
+}

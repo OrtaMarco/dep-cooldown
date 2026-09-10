@@ -1,0 +1,36 @@
+{
+  "name": "picocolors",
+  "_id": "picocolors",
+  "dist-tags": {
+    "latest": "1.1.1"
+  },
+  "time": {
+    "created": "2014-01-01T00:00:00.000Z",
+    "modified": "2026-01-15T00:00:00.000Z",
+    "0.0.1": "2014-01-01T00:00:00.000Z",
+    "1.1.1": "2026-01-15T00:00:00.000Z"
+  },
+  "versions": {
+    "0.0.1": {
+      "name": "picocolors",
+      "version": "0.0.1",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/picocolors/-/x.tgz"
+      }
+    },
+    "1.1.1": {
+      "name": "picocolors",
+      "version": "1.1.1",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/picocolors/-/x.tgz",
+        "integrity": "sha512-fixture",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/picocolors@1.1.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      }
+    }
+  }
+}

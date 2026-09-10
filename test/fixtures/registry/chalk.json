@@ -1,0 +1,31 @@
+{
+  "name": "chalk",
+  "_id": "chalk",
+  "dist-tags": {
+    "latest": "2.4.2"
+  },
+  "time": {
+    "created": "2014-01-01T00:00:00.000Z",
+    "modified": "2018-06-01T00:00:00.000Z",
+    "0.0.1": "2014-01-01T00:00:00.000Z",
+    "2.4.2": "2018-06-01T00:00:00.000Z"
+  },
+  "versions": {
+    "0.0.1": {
+      "name": "chalk",
+      "version": "0.0.1",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/chalk/-/x.tgz"
+      }
+    },
+    "2.4.2": {
+      "name": "chalk",
+      "version": "2.4.2",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/chalk/-/x.tgz",
+        "integrity": "sha512-fixture"
+      },
+      "deprecated": "chalk@2 is no longer maintained, upgrade to chalk@5"
+    }
+  }
+}

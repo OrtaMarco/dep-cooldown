@@ -1,0 +1,30 @@
+{
+  "name": "js-tokens",
+  "_id": "js-tokens",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "time": {
+    "created": "2014-01-01T00:00:00.000Z",
+    "modified": "2026-09-03T00:00:00.000Z",
+    "0.0.1": "2014-01-01T00:00:00.000Z",
+    "4.0.0": "2026-09-03T00:00:00.000Z"
+  },
+  "versions": {
+    "0.0.1": {
+      "name": "js-tokens",
+      "version": "0.0.1",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/js-tokens/-/x.tgz"
+      }
+    },
+    "4.0.0": {
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "dist": {
+        "tarball": "https://registry.npmjs.org/js-tokens/-/x.tgz",
+        "integrity": "sha512-fixture"
+      }
+    }
+  }
+}
