@@ -20,6 +20,13 @@ export interface LockEntry {
    * reports it as unverified instead of looking the date up.
    */
   unverifiable?: string;
+  /**
+   * The tarball URL the lockfile pins, when it writes one (npm `resolved`,
+   * Yarn classic `resolved`, a tarball locator elsewhere). Its shape already
+   * matches `name@version`; whether its host is the registry's is for the
+   * caller to check with `verifyResolved`.
+   */
+  resolved?: string;
 }
 
 /** A lockfile entry with no registry publish date to look up. */
@@ -41,6 +48,8 @@ export interface ParsedLockfile {
   entries: LockEntry[];
   /** Entries left out of `entries` because nothing in a registry dates them. */
   skipped?: SkippedEntry[];
+  /** Things the reader should know about how the lockfile was chosen or read. */
+  warnings?: string[];
 }
 
 /** The slice of a packument we actually need, and the only thing we cache. */
