@@ -1,0 +1,21 @@
+{
+  "name": "root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "foo": "npm:is-number@7.0.0",
+    "has-flag": "https://registry.npmjs.org/has-flag/-/has-flag-3.0.0.tgz",
+    "left-pad": "github:stevemao/left-pad#v1.3.0",
+    "link-lib": "link:./link-lib",
+    "local-lib": "file:./local-lib",
+    "ms": "patch:ms@npm%3A2.1.3#./patches/ms.patch",
+    "portal-lib": "portal:./portal-lib"
+  },
+  "devDependencies": {
+    "fresh": "1.0.0"
+  },
+  "packageManager": "yarn@4.9.2"
+}

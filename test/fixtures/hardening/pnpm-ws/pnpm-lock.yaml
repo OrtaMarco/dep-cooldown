@@ -1,0 +1,24 @@
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      fresh:
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/app:
+    dependencies:
+      fresh:
+        specifier: 1.0.0
+        version: 1.0.0
+
+packages:
+
+  fresh@1.0.0:
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  fresh@1.0.0: {}

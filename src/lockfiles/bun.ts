@@ -1,4 +1,5 @@
-import type { LockEntry, ParsedLockfile } from '../types.js';
+import type { ParsedLockfile } from '../types.js';
+import { LockCollector, checkResolvedShape, classifySpec } from './resolved.js';
 
 /**
  * `bun.lock` is JSONC: it carries trailing commas, and Bun reserves the right
@@ -89,50 +90,81 @@ interface BunLock {
   packages?: Record<string, unknown[]>;
 }
 
-/** `@scope/name@1.2.3` -> `{name, version}`; anything non-registry -> null. */
-function splitLocator(locator: string): { name: string; version: string } | null {
-  const at = locator.lastIndexOf('@');
-  if (at <= 0) return null;
-  const name = locator.slice(0, at);
-  const version = locator.slice(at + 1);
-  // `workspace:`, `git+…`, `file:…`, `link:…` have no registry publish date.
-  if (!/^\d/.test(version)) return null;
-  return { name, version };
+/**
+ * `@scope/name@locator` -> `{name, locator}`, split at the first `@` after a
+ * possible scope because git locators carry `@` too.
+ */
+function splitLocator(locator: string): { name: string; spec: string } | null {
+  const at = locator.indexOf('@', 1);
+  return at > 0 ? { name: locator.slice(0, at), spec: locator.slice(at + 1) } : null;
 }
+
+/** A top-level `packages` key is the name its dependents declare (an alias or not). */
+const TOP_LEVEL_KEY = /^(?:@[^/]+\/)?[^/]+$/;
 
 /** Parses Bun's text lockfile (`bun.lock`, lockfileVersion 0 and 1). */
 export function parseBunLock(raw: string, path: string, mtime: string): ParsedLockfile {
   const lock = JSON.parse(stripJsonc(raw)) as BunLock;
 
   const direct = new Set<string>();
-  const directDev = new Set<string>();
+  const prodNames = new Set<string>();
+  const devNames = new Set<string>();
   for (const ws of Object.values(lock.workspaces ?? {})) {
-    for (const n of Object.keys(ws.dependencies ?? {})) direct.add(n);
-    for (const n of Object.keys(ws.optionalDependencies ?? {})) direct.add(n);
-    for (const n of Object.keys(ws.peerDependencies ?? {})) direct.add(n);
-    for (const n of Object.keys(ws.devDependencies ?? {})) {
-      direct.add(n);
-      directDev.add(n);
+    for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'] as const) {
+      for (const n of Object.keys(ws[field] ?? {})) {
+        direct.add(n);
+        (field === 'devDependencies' ? devNames : prodNames).add(n);
+      }
     }
   }
 
-  const entries: LockEntry[] = [];
-  const seen = new Set<string>();
-  for (const value of Object.values(lock.packages ?? {})) {
+  const out = new LockCollector();
+  for (const [key, value] of Object.entries(lock.packages ?? {})) {
     const locator = Array.isArray(value) ? value[0] : undefined;
     if (typeof locator !== 'string') continue;
-    const parsed = splitLocator(locator);
-    if (!parsed) continue;
-    const id = `${parsed.name}@${parsed.version}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const isDirect = direct.has(parsed.name);
-    entries.push({
-      name: parsed.name,
-      version: parsed.version,
-      direct: isDirect,
-      dev: isDirect ? directDev.has(parsed.name) : null,
-    });
+    const split = splitLocator(locator);
+    if (!split) {
+      out.skip(key, locator, 'other');
+      continue;
+    }
+    const { name, spec } = split;
+
+    let version: string | null = null;
+    let resolved: string | undefined;
+    if (/^\d/.test(spec)) {
+      version = spec;
+    } else if (/^https?:\/\//i.test(spec)) {
+      // A tarball dependency: audited when the URL is the registry tarball.
+      const shape = checkResolvedShape(name, null, spec);
+      if (shape.kind === 'ok') {
+        version = shape.version;
+        resolved = spec;
+      } else {
+        out.skip(name, spec, shape.kind === 'skip' ? shape.reason : 'tarball');
+        continue;
+      }
+    } else {
+      // `workspace:`, `github:`, `git+…`, `file:…`, `link:…`: no publish date.
+      if (spec !== 'workspace:' && spec !== 'workspace:.') {
+        out.skip(name, spec, classifySpec(spec) ?? 'other');
+      }
+      continue;
+    }
+
+    const declared = [name, ...(TOP_LEVEL_KEY.test(key) && key !== name ? [key] : [])].filter((n) =>
+      direct.has(n),
+    );
+    const isDirect = declared.length > 0;
+    out.addResolved(
+      {
+        name,
+        version,
+        direct: isDirect,
+        // Dev only when no workspace declares it outside devDependencies.
+        dev: isDirect ? declared.every((n) => devNames.has(n) && !prodNames.has(n)) : null,
+      },
+      resolved,
+    );
   }
 
   return {
@@ -140,6 +172,7 @@ export function parseBunLock(raw: string, path: string, mtime: string): ParsedLo
     path,
     format: `bun.lock v${lock.lockfileVersion ?? '?'}`,
     mtime,
-    entries,
+    entries: out.entries,
+    skipped: out.skipped,
   };
 }
