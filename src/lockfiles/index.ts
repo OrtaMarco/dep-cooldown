@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { ParsedLockfile } from '../types.js';
+import type { Manager, ParsedLockfile } from '../types.js';
 import { parseNpmLock } from './npm.js';
 import { parsePnpmLock } from './pnpm.js';
 import { parseYarnLock } from './yarn.js';
@@ -11,11 +11,25 @@ export { parsePnpmKey } from './pnpm.js';
 export { stripJsonc } from './bun.js';
 
 /**
- * Detection order. `bun.lock` first because a Bun project can also carry a
- * `yarn.lock` written for tooling compatibility, and `pnpm-lock.yaml` before
- * `package-lock.json` because pnpm repos sometimes keep a stale npm lockfile.
+ * Detection order, for when the manifest does not name a package manager.
+ * `bun.lock` first because Bun can also write a `yarn.lock` copy for tooling
+ * (`install.lockfile.print = "yarn"`); `pnpm-lock.yaml` and `yarn.lock` before
+ * the npm files because repos that moved off npm often keep a stale one; and
+ * `npm-shrinkwrap.json` before `package-lock.json` because npm itself ignores
+ * `package-lock.json` when both exist. Between pnpm and Yarn there is no
+ * principled order, which is why a manifest's `packageManager` wins and any
+ * ambiguity ends up in `warnings`.
  */
-const CANDIDATES = ['bun.lock', 'pnpm-lock.yaml', 'yarn.lock', 'package-lock.json', 'npm-shrinkwrap.json'] as const;
+const CANDIDATES = ['bun.lock', 'pnpm-lock.yaml', 'yarn.lock', 'npm-shrinkwrap.json', 'package-lock.json'] as const;
+type Candidate = (typeof CANDIDATES)[number];
+
+const MANAGER_OF: Record<Candidate, Manager> = {
+  'bun.lock': 'bun',
+  'pnpm-lock.yaml': 'pnpm',
+  'yarn.lock': 'yarn',
+  'npm-shrinkwrap.json': 'npm',
+  'package-lock.json': 'npm',
+};
 
 export class NoLockfileError extends Error {
   constructor(dir: string) {
@@ -137,24 +151,79 @@ async function readManifestDirectNames(
   return { direct, dev: devOnly };
 }
 
-/** Finds and parses the first supported lockfile in `dir`. */
-export async function detectAndParse(dir: string, only?: string): Promise<ParsedLockfile> {
-  const names = only ? [only] : CANDIDATES;
-  for (const name of names) {
-    const path = join(dir, name);
-    if (!(await exists(path))) continue;
-    const [raw, info] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
-    const mtime = info.mtime.toISOString();
+/** `packageManager: "yarn@4.9.2+sha…"` or `devEngines.packageManager` -> `yarn`. */
+function declaredManager(pkg: Manifest | null): { manager: Manager; label: string } | null {
+  if (!pkg) return null;
+  const known = (name: unknown): name is Manager =>
+    name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun';
+  if (typeof pkg.packageManager === 'string') {
+    const name = pkg.packageManager.split('@')[0];
+    if (known(name)) return { manager: name, label: `packageManager: ${pkg.packageManager}` };
+  }
+  const engines = (pkg.devEngines as { packageManager?: unknown } | undefined)?.packageManager;
+  for (const pm of Array.isArray(engines) ? engines : [engines]) {
+    const name = (pm as { name?: unknown } | undefined)?.name;
+    if (known(name)) return { manager: name, label: `devEngines.packageManager: ${name}` };
+  }
+  return null;
+}
 
-    if (name === 'package-lock.json' || name === 'npm-shrinkwrap.json') {
-      return parseNpmLock(raw, path, mtime);
-    }
-    if (name === 'pnpm-lock.yaml') return parsePnpmLock(raw, path, mtime);
-    if (name === 'bun.lock') return parseBunLock(raw, path, mtime);
-    if (name === 'yarn.lock') {
-      const { direct, dev } = await readManifestDirectNames(dir);
-      return parseYarnLock(raw, path, mtime, direct, dev);
+async function parseOne(dir: string, name: string): Promise<ParsedLockfile | null> {
+  const path = join(dir, name);
+  if (!(await exists(path))) return null;
+  const [raw, info] = await Promise.all([readFile(path, 'utf8'), stat(path)]);
+  const mtime = info.mtime.toISOString();
+
+  if (name === 'package-lock.json' || name === 'npm-shrinkwrap.json') {
+    return parseNpmLock(raw, path, mtime);
+  }
+  if (name === 'pnpm-lock.yaml') return parsePnpmLock(raw, path, mtime);
+  if (name === 'bun.lock') return parseBunLock(raw, path, mtime);
+  if (name === 'yarn.lock') {
+    const { direct, dev } = await readManifestDirectNames(dir);
+    return parseYarnLock(raw, path, mtime, direct, dev);
+  }
+  return null;
+}
+
+/**
+ * Finds and parses the lockfile the package manager would use in `dir`. When
+ * several are present, the one the manifest's package manager writes wins,
+ * then {@link CANDIDATES} order, and `warnings` names the ones left unread.
+ * An explicit `only` is read as asked, with no warning.
+ */
+export async function detectAndParse(dir: string, only?: string): Promise<ParsedLockfile> {
+  if (only) {
+    const lock = await parseOne(dir, only);
+    if (lock) return lock;
+    throw new NoLockfileError(dir);
+  }
+
+  const present: Candidate[] = [];
+  for (const name of CANDIDATES) if (await exists(join(dir, name))) present.push(name);
+  if (present.length === 0) throw new NoLockfileError(dir);
+
+  let chosen = present[0]!;
+  let why = `detection order ${CANDIDATES.join(' > ')}`;
+  if (present.length > 1) {
+    const declared = declaredManager(await readManifest(dir));
+    const match = declared && present.find((name) => MANAGER_OF[name] === declared.manager);
+    if (declared && match) {
+      chosen = match;
+      why = declared.label;
+    } else if (chosen === 'npm-shrinkwrap.json' && present.includes('package-lock.json') && present.length === 2) {
+      why = 'npm reads npm-shrinkwrap.json before package-lock.json';
     }
   }
-  throw new NoLockfileError(dir);
+
+  const lock = (await parseOne(dir, chosen))!;
+  if (present.length > 1) {
+    const ignored = present.filter((name) => name !== chosen);
+    lock.warnings = [
+      ...(lock.warnings ?? []),
+      `Several lockfiles in ${dir}: read ${chosen} (${why}), ignored ${ignored.join(', ')}. ` +
+        `Pass --lockfile to audit another one.`,
+    ];
+  }
+  return lock;
 }

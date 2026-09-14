@@ -352,6 +352,46 @@ describe('dev only when no importer needs the package in production', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 5. Several lockfiles in one directory
+// ---------------------------------------------------------------------------
+
+describe('several lockfiles', () => {
+  test('npm-shrinkwrap.json wins over package-lock.json, as in npm', async () => {
+    const lock = await detectAndParse(hard('npm-shrink'));
+    assert.ok(lock.path.endsWith('npm-shrinkwrap.json'));
+    assert.equal(lock.format, 'npm-shrinkwrap.json v3');
+    assert.deepEqual(ids(lock), ['fresh@1.0.0']);
+  });
+
+  test('the report says which one was read and which were ignored', async () => {
+    const lock = await detectAndParse(hard('npm-shrink'));
+    assert.equal(lock.warnings?.length, 1);
+    assert.match(lock.warnings[0], /read npm-shrinkwrap\.json/);
+    assert.match(lock.warnings[0], /ignored package-lock\.json/);
+  });
+
+  test('packageManager picks among lockfiles of different managers', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dep-cooldown-'));
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ packageManager: 'yarn@4.9.2' }));
+      await writeFile(join(dir, 'pnpm-lock.yaml'), await readFile(fixture('pnpm-v9', 'pnpm-lock.yaml'), 'utf8'));
+      await writeFile(join(dir, 'yarn.lock'), await readFile(fixture('yarn-berry', 'yarn.lock'), 'utf8'));
+      const lock = await detectAndParse(dir);
+      assert.equal(lock.manager, 'yarn');
+      assert.match(lock.warnings?.[0] ?? '', /read yarn\.lock.*packageManager.*ignored pnpm-lock\.yaml/s);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('an explicit lockfile is read without a warning', async () => {
+    const lock = await detectAndParse(hard('npm-shrink'), 'package-lock.json');
+    assert.deepEqual(ids(lock), ['is-number@7.0.0']);
+    assert.deepEqual(lock.warnings ?? [], []);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 6. Workspace members
 // ---------------------------------------------------------------------------
 
