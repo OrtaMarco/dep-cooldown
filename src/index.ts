@@ -24,13 +24,19 @@ export { buildAudit, ageInDays, type AuditOptions } from './audit.js';
 export {
   createRegistryClient,
   trimPackument,
+  isValidPackageName,
+  DEFAULT_MAX_BYTES,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_DEADLINE_MS,
   type FetchLike,
+  type FetchResponseLike,
   type FetchOutcome,
   type ClientOptions,
 } from './registry/client.js';
 export { diskCache, nullCache, cacheDir, clearCache, type Cache } from './registry/cache.js';
 export {
   resolveRegistry,
+  redactRegistryUrl,
   registryFor,
   readExistingNpmCooldown,
   DEFAULT_REGISTRY,
