@@ -28,36 +28,44 @@ interface PnpmLock {
 }
 
 /**
+ * v5 key after the leading slash: `name/1.2.3` or `@scope/name/1.2.3`, then an
+ * optional `_peer@1.0.0+other@2.0.0` suffix. The version must look like semver
+ * so that a git key such as `user/repo/0123abc` is not read as one.
+ */
+const V5_KEY =
+  /^((?:@[^/@]+\/)?[^/@]+)\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?:_.+)?$/;
+
+/**
  * Turns a pnpm package key into `{name, version}`.
  *
  * Handles the three shapes pnpm has shipped:
  *   v9  `@scope/name@1.2.3(peer@4.5.6)`
- *   v6  `/@scope/name@1.2.3`
- *   v5  `/@scope/name/1.2.3`
+ *   v6  `/@scope/name@1.2.3(peer@4.5.6)`
+ *   v5  `/@scope/name/1.2.3_peer@4.5.6`
+ *
+ * The v5 shape is tried first: its peer suffix carries `@`, which the v6/v9
+ * split would otherwise cut on (`/fresh/1.0.0_ms@2.1.3` as `fresh/1.0.0_ms`).
  */
 export function parsePnpmKey(key: string): { name: string; version: string } | null {
   let k = key.startsWith('/') ? key.slice(1) : key;
-  // Peer-dependency suffix: `foo@1.0.0(bar@2.0.0)`.
-  const paren = k.indexOf('(');
-  if (paren !== -1) k = k.slice(0, paren);
   // A registry URL prefix can precede the name in some lockfiles.
   const registryPrefix = k.match(/^(?:[a-z]+:\/\/)?[^/]+\.[a-z]{2,}\/(?=@|[a-z])/i);
   if (registryPrefix && !k.startsWith('@')) k = k.slice(registryPrefix[0].length);
 
-  const at = k.lastIndexOf('@');
+  const v5 = k.match(V5_KEY);
+  if (v5) return { name: v5[1]!, version: v5[2]! };
+
+  // Peer-dependency suffix: `foo@1.0.0(bar@2.0.0)`.
+  const paren = k.indexOf('(');
+  if (paren !== -1) k = k.slice(0, paren);
+
+  const at = k.indexOf('@', 1);
   if (at > 0) {
     const name = k.slice(0, at);
     const version = k.slice(at + 1);
     if (/^\d/.test(version)) return { name, version };
-    return null; // git:, file:, link:, https: — nothing to look up.
   }
-  // v5 shape: split on the last slash.
-  const slash = k.lastIndexOf('/');
-  if (slash > 0) {
-    const version = k.slice(slash + 1);
-    if (/^\d/.test(version)) return { name: k.slice(0, slash), version };
-  }
-  return null;
+  return null; // git, file:, link:, tarball URLs — nothing to look up.
 }
 
 function namesOf(block: DepBlock | undefined): string[] {
