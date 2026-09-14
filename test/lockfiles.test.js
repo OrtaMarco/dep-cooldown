@@ -1,5 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { detectAndParse, parsePnpmKey, stripJsonc, NoLockfileError } from '../dist/index.js';
 import { fixture } from './helpers.js';
 
@@ -90,6 +93,50 @@ describe('lockfile parsers', () => {
 
   test('a directory with no lockfile throws NoLockfileError', async () => {
     await assert.rejects(() => detectAndParse(fixture('empty')), NoLockfileError);
+  });
+});
+
+/**
+ * pnpm 11+ writes the environment lockfile (here the pnpm binary that
+ * `devEngines.packageManager` pins) as a first YAML document before the
+ * project's. The environment document in this fixture is verbatim from
+ * unjs/h3 at a5fdc86; the project document is the pnpm-v9 fixture.
+ */
+describe('pnpm lockfile with an environment document', () => {
+  const PNPM = [
+    'pnpm@12.3.4',
+    ...['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-arm64-musl', 'linux-x64', 'linux-x64-musl', 'win32-arm64', 'win32-x64'].map(
+      (platform) => `@pnpm/exe.${platform}@12.3.4`,
+    ),
+  ];
+
+  test('audits both documents instead of failing on the second', async () => {
+    const lock = await detectAndParse(fixture('pnpm-v9-env'));
+    assert.equal(lock.format, 'pnpm-lock.yaml v9');
+    const ids = lock.entries.map((e) => `${e.name}@${e.version}`).sort();
+    assert.deepEqual(ids, [...EXPECTED, ...PNPM].sort());
+  });
+
+  test('the pinned package manager counts as direct, not dev', async () => {
+    const lock = await detectAndParse(fixture('pnpm-v9-env'));
+    const pnpm = lock.entries.find((e) => e.name === 'pnpm');
+    assert.equal(pnpm.direct, true);
+    assert.equal(pnpm.dev, false);
+    assert.deepEqual(
+      lock.entries.filter((e) => e.direct).map((e) => e.name).sort(),
+      [...DIRECT, 'pnpm'].sort(),
+    );
+  });
+
+  test('a broken second document still throws', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dep-cooldown-'));
+    try {
+      const raw = await readFile(fixture('pnpm-v9-env', 'pnpm-lock.yaml'), 'utf8');
+      await writeFile(join(dir, 'pnpm-lock.yaml'), `${raw}\nimporters: [unclosed\n`);
+      await assert.rejects(() => detectAndParse(dir));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

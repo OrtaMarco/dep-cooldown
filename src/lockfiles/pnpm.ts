@@ -1,4 +1,4 @@
-import { parse as parseYaml } from 'yaml';
+import { parseAllDocuments } from 'yaml';
 import type { LockEntry, ParsedLockfile } from '../types.js';
 
 interface ImporterSpec {
@@ -11,7 +11,14 @@ interface PnpmLock {
   lockfileVersion?: string | number;
   importers?: Record<
     string,
-    { dependencies?: DepBlock; devDependencies?: DepBlock; optionalDependencies?: DepBlock }
+    {
+      dependencies?: DepBlock;
+      devDependencies?: DepBlock;
+      optionalDependencies?: DepBlock;
+      // Only in the environment document pnpm 11+ writes first.
+      configDependencies?: DepBlock;
+      packageManagerDependencies?: DepBlock;
+    }
   >;
   dependencies?: DepBlock;
   devDependencies?: DepBlock;
@@ -57,38 +64,60 @@ function namesOf(block: DepBlock | undefined): string[] {
   return block ? Object.keys(block) : [];
 }
 
+/**
+ * pnpm 11+ can write two YAML documents into one `pnpm-lock.yaml`: first an
+ * environment lockfile (`configDependencies`, and the pnpm binary itself under
+ * `packageManagerDependencies` when `packageManager` pins it), then the project
+ * lockfile. Both resolve real versions from the registry, so both are audited.
+ */
+function readDocuments(raw: string): PnpmLock[] {
+  const locks: PnpmLock[] = [];
+  for (const doc of parseAllDocuments(raw)) {
+    const [error] = doc.errors;
+    if (error) throw error;
+    const value = doc.toJS() as PnpmLock | null;
+    if (value && typeof value === 'object') locks.push(value);
+  }
+  return locks;
+}
+
 /** Parses `pnpm-lock.yaml`, lockfile versions 5.x, 6.x and 9.x. */
 export function parsePnpmLock(raw: string, path: string, mtime: string): ParsedLockfile {
-  const lock = (parseYaml(raw) ?? {}) as PnpmLock;
-  const rawVersion = String(lock.lockfileVersion ?? '');
+  const locks = readDocuments(raw);
+  // The project document comes last; the environment one carries the same version.
+  const rawVersion = String(locks.at(-1)?.lockfileVersion ?? '');
   const major = rawVersion.split('.')[0] ?? '?';
 
   const direct = new Set<string>();
   const directDev = new Set<string>();
-  if (lock.importers) {
-    for (const imp of Object.values(lock.importers)) {
+  const sources: Record<string, unknown>[] = [];
+  for (const lock of locks) {
+    for (const imp of Object.values(lock.importers ?? {})) {
       for (const n of namesOf(imp.dependencies)) direct.add(n);
       for (const n of namesOf(imp.optionalDependencies)) direct.add(n);
+      for (const n of namesOf(imp.configDependencies)) direct.add(n);
+      for (const n of namesOf(imp.packageManagerDependencies)) direct.add(n);
       for (const n of namesOf(imp.devDependencies)) {
         direct.add(n);
         directDev.add(n);
       }
     }
-  }
-  for (const n of namesOf(lock.dependencies)) direct.add(n);
-  for (const n of namesOf(lock.optionalDependencies)) direct.add(n);
-  for (const n of namesOf(lock.devDependencies)) {
-    direct.add(n);
-    directDev.add(n);
+    for (const n of namesOf(lock.dependencies)) direct.add(n);
+    for (const n of namesOf(lock.optionalDependencies)) direct.add(n);
+    for (const n of namesOf(lock.devDependencies)) {
+      direct.add(n);
+      directDev.add(n);
+    }
+    // v9 moved the resolved set to `snapshots`, but `packages` still lists every
+    // package@version once, which is exactly what we need.
+    const source = lock.packages ?? lock.snapshots;
+    if (source) sources.push(source);
   }
 
-  // v9 moved the resolved set to `snapshots`, but `packages` still lists every
-  // package@version once, which is exactly what we need.
-  const source = lock.packages ?? (lock.snapshots as Record<string, { dev?: boolean }> | undefined);
   const entries: LockEntry[] = [];
   const seen = new Set<string>();
 
-  for (const [key, node] of Object.entries(source ?? {})) {
+  for (const [key, node] of sources.flatMap((source) => Object.entries(source))) {
     const parsed = parsePnpmKey(key);
     if (!parsed) continue;
     const id = `${parsed.name}@${parsed.version}`;
