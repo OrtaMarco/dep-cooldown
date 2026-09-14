@@ -520,23 +520,31 @@ describe('report', () => {
   test('bidi overrides and zero-width characters cannot disguise a name', () => {
     const result = auditOf(
       [
-        { name: 'lodash​', version: '4.17.21' },
-        { name: 'sj-hsadol‮', version: '1.0.0' },
+        { name: 'lodash\u200b', version: '4.17.21' },
+        { name: 'sj-hsadol\u202e', version: '1.0.0' },
       ],
       {},
     );
     const out = renderTable(result, { palette: noColor, all: true });
-    assert.doesNotMatch(out, /[​‮]/);
+    assert.doesNotMatch(out, /[\u200b\u202e]/);
     assert.match(out, /lodash\\u200b/);
     assert.match(out, /sj-hsadol\\u202e/);
   });
 
   test('a hostile lockfile cannot drive the terminal through the CLI', async () => {
-    const dir = await project([{ name: 'evil\u001b]8;;https://evil.test\u0007click\u001b]8;;\u0007', version: '1.0.0\r\u001b[2K' }]);
-    const { stdout, stderr } = await audit(dir);
-    assert.doesNotMatch(stdout, CONTROL);
-    assert.doesNotMatch(stderr, CONTROL);
-    assert.match(stdout, /\\x1b/);
+    // No registry could serve that name, so the parser lists it as skipped;
+    // `old` keeps the audit running and --all prints the skipped list.
+    const dir = await project([
+      'old',
+      { name: 'evil\u001b]8;;https://evil.test\u0007click\u001b]8;;\u0007', version: '1.0.0\r\u001b[2K' },
+    ]);
+    for (const args of [[], ['--all']]) {
+      const { stdout, stderr } = await audit(dir, args);
+      assert.doesNotMatch(stdout, CONTROL, `args=${args}`);
+      assert.doesNotMatch(stderr, CONTROL, `args=${args}`);
+    }
+    const { stdout } = await audit(dir, ['--all']);
+    assert.match(stdout, /evil\\x1b\]8/);
   });
 
   test('error messages on stderr are escaped too', async () => {

@@ -293,7 +293,7 @@ describe('hardening 3: timeouts and body size', () => {
 // ---------------------------------------------------------------------------
 describe('hardening 4: no server bytes in error messages', () => {
   // biome-ignore lint: control characters are the point of this test.
-  const CONTROL = /[ --]/;
+  const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
   test('an HTTP error carries the status code, not the reason phrase', async () => {
     const server = net.createServer((socket) => {

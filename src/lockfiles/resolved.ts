@@ -250,7 +250,7 @@ export class LockCollector {
   }
 
   skip(name: string, spec: string, reason: SkipReason): void {
-    const id = `${reason} ${name} ${spec}`;
+    const id = `${reason}\u0000${name}\u0000${spec}`;
     if (this.skippedIds.has(id)) return;
     this.skippedIds.add(id);
     this.skipped.push({ name, spec, reason });
