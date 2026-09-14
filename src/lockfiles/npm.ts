@@ -75,7 +75,9 @@ export function parseNpmLock(raw: string, path: string, mtime: string): ParsedLo
     for (const [, node] of packages) {
       for (const field of DEP_FIELDS) {
         for (const [dep, spec] of Object.entries(node[field] ?? {})) {
-          specs.set(dep, [...(specs.get(dep) ?? []), spec]);
+          const list = specs.get(dep);
+          if (list) list.push(spec);
+          else specs.set(dep, [spec]);
         }
       }
     }
@@ -115,9 +117,14 @@ export function parseNpmLock(raw: string, path: string, mtime: string): ParsedLo
 
       // `name` is set when the folder name is an alias (`"foo": "npm:bar@1"`).
       const name = node.name ?? pathName;
-      if (!node.version || !/^\d/.test(node.version)) {
-        const spec = node.resolved ?? node.version ?? key;
+      if (!node.version) {
+        const spec = node.resolved ?? key;
         out.skip(name, spec, classifySpec(spec) ?? 'other');
+        continue;
+      }
+      if (!/^\d/.test(node.version)) {
+        // Not a version at all (`__proto__`, a hand-edited value): nothing to date.
+        out.skip(name, node.version, 'other');
         continue;
       }
       out.addResolved(

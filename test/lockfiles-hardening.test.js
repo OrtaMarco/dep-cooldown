@@ -487,11 +487,13 @@ describe('aliases resolve to the published name', () => {
         'node_modules/x': { name: '..', version: '1.0.0' },
         'node_modules/y': { name: 'young?x=1#', version: '1.0.0' },
         'node_modules/z': { name: '@scope/../../etc', version: '1.0.0' },
+        // Not a version that could be looked up, even with a registry-shaped URL.
+        'node_modules/w': { version: '__proto__', resolved: 'https://registry.npmjs.org/w/-/w-7.0.1.tgz' },
       },
     });
     const lock = parseNpmLock(raw, '/x/package-lock.json', MTIME);
     assert.deepEqual(ids(lock), []);
-    assert.equal(lock.skipped?.length, 3);
+    assert.equal(lock.skipped?.length, 4);
     assert.ok(lock.skipped.every((s) => s.reason === 'other'));
   });
 });
