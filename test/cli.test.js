@@ -84,13 +84,16 @@ describe('cli', () => {
       ['--cwd', fixture('npm-v3'), '--offline', '--json'],
       { DEP_COOLDOWN_CACHE_DIR: cacheDir },
     );
-    assert.equal(code, 0, 'nothing can be flagged when nothing is known');
+    // Nothing checked is not a pass: exit 3, not 0 (see cli-hardening.test.js).
+    assert.equal(code, 3, 'nothing is young, but nothing could be checked either');
     const result = JSON.parse(stdout);
     assert.equal(result.offline, true);
     assert.equal(result.totals.packages, 14);
     assert.equal(result.totals.unknown, 14);
     assert.ok(result.rows.every((r) => r.error === 'not in cache (--offline)'));
-    assert.equal(stderr, '', 'JSON mode keeps stderr clean');
+    // JSON goes to stdout untouched; stderr carries only the one-line reason for exit 3.
+    assert.equal(stderr.trimEnd().split('\n').length, 1);
+    assert.match(stderr, /exit 3 .*--allow-unknown/);
   });
 
   test('--offline in table mode warns on stderr', async () => {
