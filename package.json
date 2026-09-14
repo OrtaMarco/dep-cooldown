@@ -28,7 +28,7 @@
   },
   "type": "module",
   "bin": {
-    "dep-cooldown": "./dist/cli.js"
+    "dep-cooldown": "./dist/bin.js"
   },
   "exports": {
     ".": {
