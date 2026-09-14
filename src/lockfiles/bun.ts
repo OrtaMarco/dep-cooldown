@@ -4,13 +4,17 @@ import type { LockEntry, ParsedLockfile } from '../types.js';
  * `bun.lock` is JSONC: it carries trailing commas, and Bun reserves the right
  * to write comments. `JSON.parse` refuses both, so strip them first. The
  * scanner is string- and escape-aware so that a `//` inside a version range or
- * an integrity hash survives.
+ * an integrity hash survives, and it drops trailing commas itself, so a `, }`
+ * inside a string is left alone.
  */
 export function stripJsonc(input: string): string {
-  let out = '';
+  // Chunks rather than one string, so dropping a comma is O(1) on big lockfiles.
+  const out: string[] = [];
   let inString = false;
   let inLine = false;
   let inBlock = false;
+  // Index in `out` of a comma followed so far only by blanks and comments.
+  let pendingComma = -1;
 
   for (let i = 0; i < input.length; i++) {
     const c = input[i]!;
@@ -19,7 +23,7 @@ export function stripJsonc(input: string): string {
     if (inLine) {
       if (c === '\n') {
         inLine = false;
-        out += c;
+        out.push(c);
       }
       continue;
     }
@@ -31,21 +35,16 @@ export function stripJsonc(input: string): string {
       continue;
     }
     if (inString) {
-      out += c;
+      out.push(c);
       if (c === '\\') {
         // Copy the escaped character verbatim so `\"` does not close the string.
         if (next !== undefined) {
-          out += next;
+          out.push(next);
           i++;
         }
       } else if (c === '"') {
         inString = false;
       }
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      out += c;
       continue;
     }
     if (c === '/' && next === '/') {
@@ -58,11 +57,21 @@ export function stripJsonc(input: string): string {
       i++;
       continue;
     }
-    out += c;
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      out.push(c);
+      continue;
+    }
+    // The first significant character after a comma settles it.
+    if (pendingComma !== -1) {
+      if (c === '}' || c === ']') out[pendingComma] = '';
+      pendingComma = -1;
+    }
+    if (c === '"') inString = true;
+    if (c === ',') pendingComma = out.length;
+    out.push(c);
   }
 
-  // Trailing commas, now that strings and comments are out of the way.
-  return out.replace(/,(\s*[}\]])/g, '$1');
+  return out.join('');
 }
 
 interface BunLock {

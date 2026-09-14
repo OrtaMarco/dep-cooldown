@@ -192,4 +192,19 @@ describe('stripJsonc', () => {
     const input = '{"a": "he said \\"//\\" loudly",}';
     assert.equal(JSON.parse(stripJsonc(input)).a, 'he said "//" loudly');
   });
+
+  test('a comma before a closing brace inside a string is text, not a trailing comma', () => {
+    const input = '{"note": "note: x, }", "list": ["a, ]", "b,\\n}",],}';
+    assert.deepEqual(JSON.parse(stripJsonc(input)), { note: 'note: x, }', list: ['a, ]', 'b,\n}'] });
+  });
+
+  test('an escaped quote does not end the string before a comma-brace', () => {
+    const input = '{"a": "q\\", }"}';
+    assert.equal(JSON.parse(stripJsonc(input)).a, 'q", }');
+  });
+
+  test('a trailing comma followed by comments and whitespace is still removed', () => {
+    const input = '{"a": [1, /* one */ ], "b": 2, // last\n  /* end */\n}';
+    assert.deepEqual(JSON.parse(stripJsonc(input)), { a: [1], b: 2 });
+  });
 });
