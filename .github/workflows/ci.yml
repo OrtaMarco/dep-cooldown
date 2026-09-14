@@ -30,5 +30,20 @@ jobs:
       - run: npm run build
       - run: node --test test/*.test.js
 
-      # Dogfooding: audit our own lockfile with the tool we just built.
-      - run: node dist/cli.js --min-age 7
+      # What users actually run: the packed tarball, installed, called through
+      # the .bin symlink. `node dist/…` cannot see a bin that exits 0 without
+      # doing anything, which is what 0.1.0 did until the pre-release review.
+      # `yaml` is pinned to the version in our own lockfile, so this install
+      # cannot pick up anything published this week either.
+      - name: The packed bin runs through its symlink
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          YAML="$(node -p "require('./package-lock.json').packages['node_modules/yaml'].version")"
+          VERSION="$(node -p "require('./package.json').version")"
+          mkdir "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
+          printf '{"name":"consumer","private":true,"overrides":{"yaml":"%s"}}\n' "$YAML" > package.json
+          npm install --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/dep-cooldown-$VERSION.tgz"
+          test "$(./node_modules/.bin/dep-cooldown --version)" = "$VERSION"
+
+      # Dogfooding: audit our own lockfile with the tool we just packed.
+      - run: '"$RUNNER_TEMP/consumer/node_modules/.bin/dep-cooldown" --cwd "$GITHUB_WORKSPACE" --min-age 7'

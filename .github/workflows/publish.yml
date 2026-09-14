@@ -10,21 +10,24 @@ name: publish
 # it: npm shows which commit and which workflow built the tarball.
 #
 # That same permission is how Shai-Hulud published from TanStack's own runner in
-# May 2026, so nothing in this job runs a third-party lifecycle script: every
-# install uses --ignore-scripts, and the repo's .npmrc keeps the 7-day cooldown.
+# May 2026: the payload ran inside the job that could mint the token. So the
+# work is split. `build` installs, compiles, tests and packs with no token in
+# reach; `publish` holds `id-token: write`, installs nothing from the lockfile,
+# runs no build and no lifecycle script, and publishes the exact tarball `build`
+# produced. There is no manual trigger: only a tag that matches package.json.
 
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
     steps:
       - uses: actions/checkout@v5
 
@@ -33,14 +36,7 @@ jobs:
           node-version: '22'
           cache: npm
 
-      # Trusted Publishing needs npm >= 11.5.1, and Node 22 ships npm 10.
-      - run: npm install -g --ignore-scripts npm@^11.5.1
-
-      - run: npm ci --ignore-scripts
-      - run: npm run typecheck
-
       - name: The tag must match package.json
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
@@ -49,6 +45,45 @@ jobs:
             exit 1
           fi
 
-      # prepublishOnly builds and runs the tests, so the tarball is the build
-      # that just passed them. --ignore-scripts would skip that too.
-      - run: npm publish --access public
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run build
+      - run: node --test test/*.test.js
+
+      - id: pack
+        run: |
+          TARBALL="$(npm pack --ignore-scripts --json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s)[0].filename))")"
+          sha512sum "$TARBALL"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in the repository settings to
+    # turn every release into a manual approval.
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      # Trusted Publishing needs npm >= 11.5.1 and Node 22 ships npm 10. Pinned
+      # to an exact, weeks-old release: this job must not fetch a fresh one.
+      - run: npm install -g --ignore-scripts npm@11.19.1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarball
+
+      # Publishing a tarball runs no lifecycle scripts.
+      - run: npm publish "./${{ needs.build.outputs.tarball }}" --access public
