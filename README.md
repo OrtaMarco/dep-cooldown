@@ -31,73 +31,92 @@ Zero-config, one runtime dependency (`yaml`), Node ≥ 20, MIT.
 
 ## Real output
 
-Against [ortamarco.me](https://ortamarco.me)'s repository — 987 packages, npm
-lockfile v3:
+Both examples run against a public repository at a pinned commit, so you can
+reproduce them. Ages measured *today* drift; ages measured `--as-of` a commit
+do not.
+
+### A pnpm project: `unjs/h3`
 
 ```
-$ npx dep-cooldown --min-age 7
+$ git clone https://github.com/unjs/h3 && cd h3 && git checkout -q a5fdc86
+$ npx dep-cooldown
 
-dep-cooldown · package-lock.json v3 · 987 packages
-registry https://registry.npmjs.org · threshold 7d · ages as of 2026-09-10 (today)
-hint: this lockfile was last written on 2026-08-23. Re-run with --as-of 2026-08-23
-to see what a cooldown would have blocked that day.
+dep-cooldown · pnpm-lock.yaml v9 · 437 packages
+registry https://registry.npmjs.org · threshold 7d · ages as of 2026-09-14 (today)
 
-PACKAGE          VERSION  PUBLISHED    AGE  DEP     PROV  FLAGS
-whatwg-encoding  3.1.1    2023-11-12  1033  trans.  no    DEPRECATED
-boolean          3.2.0    2022-02-16  1667  trans.  no    DEPRECATED
-985 package(s) passed and are not listed; --all shows everything.
+OK - every resolved version is at least 7 day(s) old, none deprecated.
 
-987 packages (58 direct) · 0 younger than 7d · 2 deprecated · 296 with provenance
+437 packages (45 direct) · 0 younger than 7d · 0 deprecated · 189 with provenance
 ```
 
-Nothing is young *today*, because that lockfile is three weeks old. The
-interesting question is what it looked like the day it was written — which is
-what the hint line is for:
+Nothing is young on 2026-09-14, because that commit is ten days old. The
+interesting question is what the lockfile looked like the moment it was
+written. A fresh clone stamps every file with the clone date, so ask git:
 
 ```
-$ npx dep-cooldown --min-age 7 --as-of 2026-08-23
+$ git log -1 --format=%cI -- pnpm-lock.yaml
+2026-09-04T16:12:01+00:00
 
-dep-cooldown · package-lock.json v3 · 987 packages
-registry https://registry.npmjs.org · threshold 7d · ages as of 2026-08-23 (--as-of)
+$ npx dep-cooldown --min-age 1 --as-of 2026-09-04T16:12:01+00:00
 
-PACKAGE          VERSION  PUBLISHED    AGE  DEP     PROV  FLAGS
-fast-xml-parser  5.11.0   2026-08-16   6.8  direct  yes   YOUNG
-whatwg-encoding  3.1.1    2023-11-12  1015  trans.  no    DEPRECATED
-boolean          3.2.0    2022-02-16  1649  trans.  no    DEPRECATED
+dep-cooldown · pnpm-lock.yaml v9 · 437 packages
+registry https://registry.npmjs.org · threshold 1d · ages as of 2026-09-04 (--as-of)
 
-987 packages (58 direct) · 1 younger than 7d · 2 deprecated · 296 with provenance
+PACKAGE                     VERSION      PUBLISHED   AGE  DEP     PROV  FLAGS
+@pnpm/exe.darwin-arm64      12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.darwin-x64        12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.linux-arm64       12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.linux-arm64-musl  12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.linux-x64         12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.linux-x64-musl    12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.win32-arm64       12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+@pnpm/exe.win32-x64         12.3.4       2026-09-04   2h  trans.  yes   YOUNG
+pnpm                        12.3.4       2026-09-04   2h  direct  yes   YOUNG
+h3                          2.0.1-rc.31  2026-09-03  17h  direct  no    YOUNG
+srvx                        1.0.3        2026-09-03  17h  direct  no    YOUNG
+426 package(s) passed and are not listed; --all shows everything.
+
+437 packages (45 direct) · 11 younger than 1d · 0 deprecated · 189 with provenance
 ```
 
-`fast-xml-parser@5.11.0` was **6.8 days old** when it was installed. A 7-day
-cooldown would have held it back; a 3-day one would not have noticed.
+One day is pnpm's own default `minimumReleaseAge` since pnpm 11. Of the eleven
+packages under it, `h3` and `srvx` sit on the project's
+`minimumReleaseAgeExclude` list. The other nine are **pnpm 12.3.4 itself**,
+pinned through `devEngines.packageManager` and committed at most two hours
+after it was published — pnpm 11+ writes it into a separate YAML document at
+the top of the lockfile, which is easy to miss when reading one. At a 7-day threshold the same
+commit has **109** packages under the line. Exit code `1` either way.
 
-And a pnpm project that was installed three days ago:
+### An npm project: `OrtaMarco/mx-fiscal-mcp-server`
+
+The commit where this MCP server switched `mx-identifiers` from a local `file:`
+path to the version just published on npm — by the same author:
 
 ```
-$ npx dep-cooldown --min-age 7
+$ git clone https://github.com/OrtaMarco/mx-fiscal-mcp-server && cd mx-fiscal-mcp-server && git checkout -q 32c6e8c
+$ npx dep-cooldown --as-of 2026-09-10T10:47:13-06:00
 
-dep-cooldown · pnpm-lock.yaml v9 · 183 packages
-registry https://registry.npmjs.org · threshold 7d · ages as of 2026-09-10 (today)
-hint: this lockfile was last written on 2026-09-07. Re-run with --as-of 2026-09-07
-to see what a cooldown would have blocked that day.
+dep-cooldown · package-lock.json v3 · 131 packages
+registry https://registry.npmjs.org · threshold 7d · ages as of 2026-09-10 (--as-of)
 
-PACKAGE                    VERSION       PUBLISHED   AGE  DEP     PROV  FLAGS
-@cloudflare/workers-types  5.20260907.1  2026-09-07  3.2  direct  yes   YOUNG
-@ai-sdk/openai             4.0.60        2026-09-05  4.5  direct  yes   YOUNG
-@ai-sdk/gateway            4.0.75        2026-09-04  5.3  trans.  yes   YOUNG
-ai                         7.0.93        2026-09-04  5.3  direct  yes   YOUNG
-hono                       4.13.7        2026-09-04  5.4  direct  yes   YOUNG
-undici                     7.29.1        2026-09-04  5.6  trans.  yes   YOUNG
-@cloudflare/vitest-plugin  1.1.4         2026-09-03  6.5  direct  yes   YOUNG
-...
-163 package(s) passed and are not listed; --all shows everything.
+PACKAGE         VERSION  PUBLISHED   AGE  DEP     PROV  FLAGS
+mx-identifiers  1.0.0    2026-09-10   0h  direct  yes   YOUNG
+zod             4.6.1    2026-09-09  19h  direct  yes   YOUNG
+@types/node     22.20.2  2026-09-09  22h  direct  no    YOUNG
+body-parser     1.20.8   2026-09-08  2.3  trans.  yes   YOUNG
+jose            6.2.12   2026-09-05  5.3  trans.  yes   YOUNG
+hono            4.13.7   2026-09-04  5.9  trans.  yes   YOUNG
+125 package(s) passed and are not listed; --all shows everything.
 
-183 packages (12 direct) · 20 younger than 7d · 0 deprecated · 135 with provenance
+131 packages (11 direct) · 6 younger than 7d · 0 deprecated · 40 with provenance
 ```
 
-Exit code `1`. Re-run it with `--as-of 2026-09-07` and the count goes from 20 to
-**46** — the day you install is the day the risk is highest, which is precisely
-the day a cooldown is worth having.
+`mx-identifiers@1.0.0` was **at most nine minutes old** when that lockfile was
+committed (published 16:37:54 UTC, committed 16:47:13 UTC).
+A 7-day cooldown would have refused the author's own release — which is what
+the exclusion keys are for: exempt what you publish yourself, and let the
+cooldown hold back everything else. The day you install is the day the risk is
+highest, which is precisely the day a cooldown is worth having.
 
 ## What the columns mean
 
@@ -213,7 +232,7 @@ into whatever you use for annotations.
 | Format | Versions read | How direct dependencies are identified |
 |---|---|---|
 | `package-lock.json` | v3, v2 (v1 and `npm-shrinkwrap.json` via the legacy tree) | the root entry's dependency fields |
-| `pnpm-lock.yaml` | v9, v6 (v5 keys parse too) | `importers`, or the top-level blocks on v6 |
+| `pnpm-lock.yaml` | v9, v6 (v5 keys parse too), including the environment document pnpm 11+ writes first | `importers`, or the top-level blocks on v6; the pinned pnpm counts as direct |
 | `yarn.lock` | Berry (v2+) and classic (v1) | your `package.json` — neither format records it |
 | `bun.lock` | the text format, v0/v1 | the `workspaces` block |
 
@@ -267,13 +286,16 @@ There is real work in this space already. `dep-cooldown` is not the first tool
 to look at release ages; what is new is the **combination** — a lockfile audit
 (all four formats), a retrospective `--as-of` simulation, provenance and
 deprecation in the same table, and config generation for all four managers.
-Here is where the others actually stand, checked on 2026-09-09:
+Here is where the others actually stand, checked against their published code
+on 2026-09-14:
 
 | | Reads a lockfile | Retrospective `--as-of` | Provenance | Emits PM config | What it is for |
 |---|---|---|---|---|---|
 | [`pkg-age`](https://www.npmjs.com/package/pkg-age) | no (`package.json`) | no | no | no | Is this dependency **stale or abandoned** — age of `latest`, major drift, deprecation, risk score |
 | [`pmsec`](https://github.com/HikaruEgashira/pmsec) | no | no | no | **writes it for you**, 9 managers | Applies a whole hardening bundle (cooldown is one row of ~45) to your **user-global** configs |
-| [`Zwyx/npm-cooldown`](https://github.com/Zwyx/npm-cooldown) | partially (npm only, to verify) | resolves *forward* to N days ago | no | no | An `npm install` **wrapper** that installs the tree as it was N days ago |
+| [`Zwyx/npm-cooldown`](https://github.com/Zwyx/npm-cooldown) | npm only (`package-lock.json`), opt-in: `--paranoid` blocks the install if any locked version is under N days | no — fixed at *now − N days* | no | no | An `npm install` **wrapper** that installs the tree as it was N days ago |
+| [`@jagreehal/screen-node`](https://github.com/jagreehal/screen-node) | partially, with `--deep` — npm v2/v3, pnpm v9, Yarn classic; pnpm v6, Yarn Berry and Bun fall back to direct deps, and a multi-document pnpm lockfile yields only its pnpm self-install section | no — always *now* | partially — flags a *provenance regression*, direct deps only | no | An install **wrapper** for all four managers that blocks too-fresh, deprecated or malware-flagged versions; `delta` gates only what a PR adds |
+| [`@moneytree/supply-chain-guard`](https://github.com/moneytree/supply-chain-guard) | partially — npm and Yarn classic (Berry only at lockfile version 9); no pnpm or Bun, which pass silently | no — always *now* | no | no | A multi-ecosystem **CI gate** that fails when a committed lockfile holds a version younger than N days; by default it skips lockfiles untouched in that window |
 | [`getjerry/npm-cooldown`](https://github.com/getjerry/npm-cooldown) | yes (npm, yarn, pnpm) | no — diffs git revisions | no | no | CI gate on **added or changed** packages between two revisions |
 | [`check-outdated --min-age`](https://github.com/jens-duttke/check-outdated) | no (wraps `npm outdated`) | no | no | no | An `npm outdated` replacement that **recommends** an age-qualified upgrade |
 | [`npm-check-updates --cooldown`](https://github.com/raineorshine/npm-check-updates) | no (`package.json`) | no | no | no — but it **reads** your existing npm/pnpm/Yarn cooldown config | Finds upgrades, skipping ones that are too fresh |
@@ -292,12 +314,21 @@ Honest notes on those:
   highest Major.Minor line with a qualifying version, then the newest patch in
   that line (`--min-age-patch`, default 0), on the reasoning that patches are
   low-risk fixes.
-- **`npm-check-updates` is by far the most used** (3.2M downloads/month) and its
+- **`npm-check-updates` is by far the most used** (~3M downloads/month) and its
   `--cooldown` will read your manager's native config when you do not pass one.
   If you only want upgrade suggestions to respect a cooldown, use ncu; this tool
   answers a different question about a lockfile that already exists.
-- **None of the six reports npm provenance**, and none does a retrospective
-  simulation against an arbitrary date.
+- **Only `screen-node` looks at npm provenance**, and only to flag a direct
+  dependency whose new version dropped it; none reports provenance across the
+  resolved tree. None of the eight does a retrospective simulation against an
+  arbitrary date — `screen-node`'s library accepts a `now`, but ignores versions
+  published after it, so it cannot replay an install.
+- **Two of them read a lockfile and still miss formats without saying so.**
+  Against real lockfiles, `supply-chain-guard` exits `0` with "Scanned 0
+  manifest files" on a pnpm project, and `screen-node --deep` on a pnpm 12
+  lockfile only checks the pnpm binary in its first YAML document. This is not a
+  dig: `dep-cooldown` crashed on that same multi-document lockfile until
+  2026-09-14.
 
 ## API
 
