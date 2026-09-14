@@ -6,7 +6,7 @@ import { buildAudit, parseIsoTimestamp, selectEntries } from './audit.js';
 import { detectAndParse, NoLockfileError } from './lockfiles/index.js';
 import { createRegistryClient } from './registry/client.js';
 import { diskCache, nullCache, cacheDir, clearCache } from './registry/cache.js';
-import { resolveRegistry } from './registry/npmrc.js';
+import { redactRegistryUrl, resolveRegistry } from './registry/npmrc.js';
 import { ALL_MANAGERS, renderConfig } from './report/config.js';
 import { pickPalette } from './report/color.js';
 import { escapeControl, escapeControlKeepNewlines } from './report/sanitize.js';
@@ -163,8 +163,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return EXIT_OK;
   }
   if (flags['clear-cache']) {
-    await clearCache();
-    process.stdout.write(`removed ${escapeControl(cacheDir())}\n`);
+    const dir = escapeControl(cacheDir());
+    const { removed, kept, removedDir } = await clearCache();
+    process.stdout.write(
+      removedDir
+        ? `removed ${dir} (${removed} cache file(s))\n`
+        : `removed ${removed} cache file(s) from ${dir}` +
+            (kept > 0 ? `; kept ${kept} file(s) that are not dep-cooldown's\n` : '\n'),
+    );
     return EXIT_OK;
   }
 
@@ -253,8 +259,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     asOfExplicit,
     onlyDirect: flags['only-direct'],
     prodOnly: flags.prod,
-    // Where the registry URL would be redacted before it is printed or serialised.
-    registry: registryConfig.default,
+    // Requests go to the expanded URL; the report only ever shows it redacted,
+    // in the table and in --json alike.
+    registry: redactRegistryUrl(registryConfig.default),
     offline: flags.offline,
   });
 

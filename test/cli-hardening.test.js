@@ -555,3 +555,35 @@ describe('report', () => {
     assert.doesNotMatch(bad.stderr, CONTROL);
   });
 });
+
+describe('registry URL in the report', () => {
+  async function withNpmrc(line) {
+    const dir = await project(['old']);
+    await writeFile(join(dir, '.npmrc'), `${line}\n`);
+    return dir;
+  }
+
+  function run(dir, args, env = {}) {
+    return exec(BIN, ['--cwd', dir, '--no-cache', ...args], {
+      env: { DEP_COOLDOWN_CACHE_DIR: cacheDir, ...env },
+    });
+  }
+
+  test('credentials in the .npmrc registry never reach the table or --json', async () => {
+    const dir = await withNpmrc(`registry=${registry.replace('http://', 'http://marco:hunter2@')}/`);
+    for (const args of [[], ['--json']]) {
+      const { stdout, stderr } = await run(dir, args);
+      assert.doesNotMatch(stdout + stderr, /hunter2/, `args=${args}`);
+      assert.match(stdout, /\*\*\*@127\.0\.0\.1/, `args=${args}`);
+    }
+  });
+
+  test('a ${VAR} expanded from the environment is shown as written, not as its value', async () => {
+    const dir = await withNpmrc(`registry=${registry}/\${DEPC_TEST_SECRET}/`);
+    for (const args of [[], ['--json']]) {
+      const { stdout, stderr } = await run(dir, args, { DEPC_TEST_SECRET: 'ghs_SECRETVALUE123' });
+      assert.doesNotMatch(stdout + stderr, /ghs_SECRETVALUE123/, `args=${args}`);
+      assert.match(stdout, /\$\{DEPC_TEST_SECRET\}/, `args=${args}`);
+    }
+  });
+});
