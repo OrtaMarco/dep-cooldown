@@ -44,9 +44,10 @@ $ npx dep-cooldown
 dep-cooldown · pnpm-lock.yaml v9 · 437 packages
 registry https://registry.npmjs.org · threshold 7d · ages as of 2026-09-14 (today)
 
-OK - every resolved version is at least 7 day(s) old, none deprecated.
+All 437 audited package versions are at least 7 day(s) old as of 2026-09-14, none deprecated; the 1 skipped entry was not checked.
 
 437 packages (45 direct) · 0 younger than 7d · 0 deprecated · 189 with provenance
+1 skipped (1 workspace) - no registry publish date, not checked; --all lists them.
 ```
 
 Nothing is young on 2026-09-14, because that commit is ten days old. The
@@ -63,20 +64,21 @@ dep-cooldown · pnpm-lock.yaml v9 · 437 packages
 registry https://registry.npmjs.org · threshold 1d · ages as of 2026-09-04 (--as-of)
 
 PACKAGE                     VERSION      PUBLISHED   AGE  DEP     PROV  FLAGS
-@pnpm/exe.darwin-arm64      12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.darwin-x64        12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.linux-arm64       12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.linux-arm64-musl  12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.linux-x64         12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.linux-x64-musl    12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.win32-arm64       12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-@pnpm/exe.win32-x64         12.3.4       2026-09-04   2h  trans.  yes   YOUNG
-pnpm                        12.3.4       2026-09-04   2h  direct  yes   YOUNG
-h3                          2.0.1-rc.31  2026-09-03  17h  direct  no    YOUNG
+pnpm                        12.3.4       2026-09-04   1h  direct  yes   YOUNG
+@pnpm/exe.darwin-arm64      12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.darwin-x64        12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.linux-arm64       12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.linux-arm64-musl  12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.linux-x64         12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.linux-x64-musl    12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.win32-arm64       12.3.4       2026-09-04   1h  trans.  yes   YOUNG
+@pnpm/exe.win32-x64         12.3.4       2026-09-04   1h  trans.  yes   YOUNG
 srvx                        1.0.3        2026-09-03  17h  direct  no    YOUNG
+h3                          2.0.1-rc.31  2026-09-03  17h  direct  no    YOUNG
 426 package(s) passed and are not listed; --all shows everything.
 
 437 packages (45 direct) · 11 younger than 1d · 0 deprecated · 189 with provenance
+1 skipped (1 workspace) - no registry publish date, not checked; --all lists them.
 ```
 
 One day is pnpm's own default `minimumReleaseAge` since pnpm 11. Of the eleven
@@ -101,11 +103,11 @@ registry https://registry.npmjs.org · threshold 7d · ages as of 2026-09-10 (--
 
 PACKAGE         VERSION  PUBLISHED   AGE  DEP     PROV  FLAGS
 mx-identifiers  1.0.0    2026-09-10   0h  direct  yes   YOUNG
-zod             4.6.1    2026-09-09  19h  direct  yes   YOUNG
+zod             4.6.1    2026-09-09  18h  direct  yes   YOUNG
 @types/node     22.20.2  2026-09-09  22h  direct  no    YOUNG
-body-parser     1.20.8   2026-09-08  2.3  trans.  yes   YOUNG
+body-parser     1.20.8   2026-09-08  2.2  trans.  yes   YOUNG
 jose            6.2.12   2026-09-05  5.3  trans.  yes   YOUNG
-hono            4.13.7   2026-09-04  5.9  trans.  yes   YOUNG
+hono            4.13.7   2026-09-04  5.8  trans.  yes   YOUNG
 125 package(s) passed and are not listed; --all shows everything.
 
 131 packages (11 direct) · 6 younger than 7d · 0 deprecated · 40 with provenance
@@ -123,13 +125,20 @@ highest, which is precisely the day a cooldown is worth having.
 | Column | Meaning |
 |---|---|
 | `PUBLISHED` | The registry's `time[version]`, i.e. when that exact version went live |
-| `AGE` | Days between publication and the reference date (`--as-of`, or today). Under a day it shows hours |
+| `AGE` | Days between publication and the reference date (`--as-of`, or today), **truncated, never rounded up**: 6.96 days shows `6.9`. Under a day it shows hours. The threshold itself compares exact milliseconds |
 | `DEP` | `direct` if the root `package.json` lists it, `trans.` otherwise |
 | `PROV` | Whether the version carries [npm provenance](https://docs.npmjs.com/generating-provenance-statements) (`dist.attestations`) |
-| `FLAGS` | `YOUNG` = below `--min-age`; `DEPRECATED` = the registry marks this version deprecated |
+| `FLAGS` | `YOUNG` = below `--min-age`; `FUTURE` = published after `--as-of`, so it did not exist that day (also counts as young); `DEPRECATED` = the registry marks this version deprecated |
 
-By default only rows that need attention are printed. `--all` lists everything;
-`--json` gives you the whole structure with per-row `error` fields.
+By default only rows that need attention are printed. `--all` lists everything,
+including the skipped lockfile entries; `--json` gives you the whole structure
+with per-row `error` fields.
+
+A row with no usable date — the registry returned an error, the version or its
+date is missing or unreadable, or the lockfile's `resolved` URL is not the
+registry tarball for that name and version — is **unknown**, and unknown is
+never reported as passing. The `All N audited package versions are at least…`
+line only appears when every audited row has a real date.
 
 ## Turning the cooldown on
 
@@ -197,9 +206,21 @@ jobs:
         run: npx --yes dep-cooldown --min-age 7
 ```
 
-It exits `1` when anything is younger than the threshold, `2` on a usage or
-setup error (no lockfile, bad flag), and `0` otherwise. Because it never
-installs anything, no third-party lifecycle script runs in that job.
+Because it never installs anything, no third-party lifecycle script runs in
+that job. The exit code is the verdict:
+
+| Code | Meaning |
+|---|---|
+| `0` | Every audited version is at least `--min-age` days old. Entries with no registry date (git, `file:`, `link:`, workspaces, remote tarballs) are listed as skipped, not checked |
+| `1` | At least one version is younger than `--min-age`, or published after `--as-of` |
+| `2` | Usage or tool error: a bad flag, no readable lockfile, or `--only-direct` / `--prod` leaving nothing to audit |
+| `3` | Nothing is young, but some versions **could not be checked**: registry errors, `--offline` cache misses, missing or unreadable dates, or a `resolved` URL that is not the registry's tarball |
+
+Exit `3` fails the job on purpose: a check that could not run is not a pass.
+If you audit against a private registry that needs authentication —
+`dep-cooldown` never sends tokens — every package comes back unknown, and
+`--allow-unknown` turns that `3` into `0`. If the lockfile was resolved against
+a mirror, the tool says so once per host; pass that mirror as `--registry`.
 
 To report without blocking, add `continue-on-error: true`, or pipe `--json`
 into whatever you use for annotations.
@@ -207,37 +228,61 @@ into whatever you use for annotations.
 ## Options
 
 ```
---min-age <days>      Flag versions younger than this. Default: 7. Exits 1 when
-                      anything is flagged.
---as-of <date>        Measure ages against an ISO date instead of today. When
-                      omitted, the report suggests your lockfile's own mtime.
+--min-age <days>      Flag versions younger than this, a plain decimal such as
+                      7 or 0.5. Default: 7. Exits 1 when anything is flagged.
+--allow-unknown       Exit 0 instead of 3 when nothing is flagged but some
+                      versions could not be checked.
+--as-of <date>        Measure ages against an ISO 8601 date instead of now:
+                      2026-09-01, 2026-09-01T16:12:01Z or …+02:00. When omitted,
+                      the report suggests your lockfile's own mtime.
 --only-direct         Only packages listed in package.json.
 --prod                Skip dependencies the lockfile marks development-only.
---top <n>             Show at most n rows (sorted youngest first).
---all                 List every package, not just the ones that need action.
+--top <n>             Show at most n rows, n >= 1 (sorted youngest first).
+--all                 List every package and every skipped lockfile entry.
 --json                Machine-readable output.
 --config <target>     npm | pnpm | yarn | bun | all. Prints config, does not audit.
 --offline             Never touch the network; use the cache and say what is missing.
 --no-cache            Ignore and do not write the on-disk cache.
---clear-cache         Delete the cache directory and exit.
+--clear-cache         Delete dep-cooldown's cache files and exit.
 --registry <url>      Override the registry. Otherwise .npmrc is honoured.
 --cwd <dir>           Run against another directory.
 --lockfile <name>     Force a specific lockfile instead of detecting one.
---concurrency <n>     Parallel registry requests. Default: 8.
+--concurrency <n>     Parallel registry requests, n >= 1. Default: 8.
 --no-color            Disable colour (already off when stdout is not a TTY).
 ```
+
+An empty or malformed value is an error, never a default: `--min-age ""` from an
+unset CI variable exits `2` instead of auditing with a threshold of zero.
 
 ### Lockfiles
 
 | Format | Versions read | How direct dependencies are identified |
 |---|---|---|
-| `package-lock.json` | v3, v2 (v1 and `npm-shrinkwrap.json` via the legacy tree) | the root entry's dependency fields |
-| `pnpm-lock.yaml` | v9, v6 (v5 keys parse too), including the environment document pnpm 11+ writes first | `importers`, or the top-level blocks on v6; the pinned pnpm counts as direct |
-| `yarn.lock` | Berry (v2+) and classic (v1) | your `package.json` — neither format records it |
+| `package-lock.json`, `npm-shrinkwrap.json` | v3, v2 (v1 via the legacy tree); the shrinkwrap wins when both exist, as it does for npm | the root entry's dependency fields |
+| `pnpm-lock.yaml` | v9, v6 and v5.x (peer suffixes included), plus the environment document pnpm 11+ writes first | `importers`, or the top-level blocks on v5/v6; the pinned pnpm counts as direct |
+| `yarn.lock` | Berry (v2+) and classic (v1) | your `package.json` and its workspace manifests — neither format records it |
 | `bun.lock` | the text format, v0/v1 | the `workspaces` block |
 
-Workspace links, `file:`, `git:`, `link:`, `portal:` and `patch:` entries are
-skipped: they have no registry publish date to look up.
+With several lockfiles in one directory, the manifest's `packageManager` (or
+`devEngines.packageManager`) decides which one is read, then the fixed order
+bun, pnpm, Yarn, npm; a warning on stderr names the ones left unread.
+
+**The lockfile's own `resolved` URL is checked, not just its `version` field.**
+`npm ci` installs whatever `resolved` points to, so a lockfile that says
+`4.17.21` but resolves to the `4.17.22` tarball would otherwise be dated as
+`4.17.21`. When the URL is not the registry tarball for that name and version,
+or comes from a host other than the registry being asked, the row is unknown
+(exit `3`). `registry.npmjs.org` and `registry.yarnpkg.com` count as the same
+registry, and a tarball on the public registry is accepted whatever registry
+you audit against, because npm rewrites that host to the configured one at
+install time (`replace-registry-host`). Aliases (`foo@npm:bar@1`) are looked up under the published name.
+
+Entries with no registry publish date are **listed, never dropped silently**:
+the summary line counts them and `--all` prints each one with its reason —
+`git` (git dependencies, codeload), `file` (`file:` and local tarballs), `link`
+(`link:`, `portal:`), `workspace` (workspace members), `tarball` (a URL that is
+not a registry tarball) and `other` (a name or version no registry could serve).
+A Yarn `patch:` over a registry package audits the base package.
 
 ### Network, cache and registries
 
@@ -245,12 +290,35 @@ The publish dates only exist in the **full** packument — the abbreviated one
 npm's installer uses (`application/vnd.npm.install-v1+json`) has no `time`
 field — so `dep-cooldown` fetches `https://registry.npmjs.org/<pkg>`, at most 8
 at a time, and caches a trimmed record (dates, provenance flag, deprecation) for
-24 hours under `~/.cache/dep-cooldown/`.
+24 hours under `~/.cache/dep-cooldown/` (created `0700`; `DEP_COOLDOWN_CACHE_DIR`
+moves it). An entry that is corrupt, belongs to another package or claims to
+have been fetched in the future counts as absent. `--clear-cache` removes only
+its own files and never follows symlinks.
 
-It honours `registry=` and `@scope:registry=` in your project `.npmrc` and
-`~/.npmrc`, plus `npm_config_registry`. A registry that returns no `time` data
-leaves those rows as unknown rather than guessing. `--offline` works entirely
-from the cache and tells you what it could not find.
+**Which registry.** `--registry`, then `npm_config_registry` (any casing; an
+empty value is ignored), then the project `.npmrc`, then your user config
+(`NPM_CONFIG_USERCONFIG`, which is where `actions/setup-node` writes it, or
+`~/.npmrc`), then the public registry. `@scope:registry=` follows the same
+order. `${VAR}` expands the way npm 11 expands it: `${VAR?}` gives an empty
+string, `\${` escapes, and an unset variable stays literal.
+
+**What it never does.** It never sends a token, a password or URL userinfo to
+any registry, so a private registry that needs authentication answers with an
+error and those rows are unknown. Reports show the registry with userinfo as
+`***` and `${VAR}` as written, never its value. Note that, exactly as with
+`npm ci`, a hostile project `.npmrc` can still put an environment variable into
+the request *path*; audit untrusted checkouts with `--registry`.
+
+**Limits.** 30 s per attempt, 60 s per package, three attempts, and 128 MiB per
+packument — twice the largest on npm today (`renovate`, 66 MiB in September
+2026). Redirects are followed only within the same origin, plus `http` to
+`https` on the same host. A name that is not a valid npm package name is an
+error for that package and never becomes a request. Error messages carry status
+codes and the tool's own words, never bytes from the server.
+
+A registry that returns no `time` data leaves those rows unknown rather than
+guessing. `--offline` works entirely from the cache and tells you what it could
+not find.
 
 ## What this does *not* protect you from
 
@@ -399,15 +467,22 @@ Qué hace, en concreto:
    `pnpm-lock.yaml` (v6 y v9), `yarn.lock` (classic y Berry) y `bun.lock`.
 2. **Consulta la fecha de publicación** de cada versión resuelta en el registro,
    con concurrencia limitada a 8, caché en disco de 24 h en
-   `~/.cache/dep-cooldown/` y respeto por el `registry=` de tu `.npmrc`.
+   `~/.cache/dep-cooldown/` y respeto por el `registry=` de tu `.npmrc`. Nunca
+   envía tokens, y comprueba que el `resolved` del lockfile sea de verdad el
+   tarball del registro para esa versión.
 3. **Informa** en tabla o `--json`: paquete, versión, fecha, edad en días,
    directa o transitiva, si trae **procedencia** (`dist.attestations`) y si está
-   **deprecada**.
-4. **`--as-of <fecha>`** calcula la edad respecto a esa fecha en lugar de hoy.
+   **deprecada**. Lo que no tiene fecha de registro (git, `file:`, workspaces)
+   se lista como omitido, nunca desaparece en silencio.
+4. **Sale con un código que es el veredicto**: `0` todo tiene la edad mínima,
+   `1` algo es más joven, `2` error de uso, y `3` nada es joven pero algo **no
+   se pudo comprobar** — que no es lo mismo que aprobar. `--allow-unknown`
+   convierte ese `3` en `0`.
+5. **`--as-of <fecha>`** calcula la edad respecto a esa fecha en lugar de hoy.
    Es lo que permite responder «¿qué habría bloqueado un cooldown de 3 o 7 días
    el día que instalé esto?». Cuando no la pasas, el informe te sugiere la fecha
    de modificación de tu propio lockfile.
-5. **`--config`** imprime la configuración lista para pegar, **con la trampa de
+6. **`--config`** imprime la configuración lista para pegar, **con la trampa de
    las unidades resuelta**.
 
 ### La trampa de las unidades
