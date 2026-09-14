@@ -4,9 +4,10 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildAudit, parseIsoTimestamp, selectEntries } from './audit.js';
 import { detectAndParse, NoLockfileError } from './lockfiles/index.js';
+import { verifyResolved } from './lockfiles/resolved.js';
 import { createRegistryClient } from './registry/client.js';
 import { diskCache, nullCache, cacheDir, clearCache } from './registry/cache.js';
-import { redactRegistryUrl, resolveRegistry } from './registry/npmrc.js';
+import { redactRegistryUrl, registryFor, resolveRegistry } from './registry/npmrc.js';
 import { ALL_MANAGERS, renderConfig } from './report/config.js';
 import { pickPalette } from './report/color.js';
 import { escapeControl, escapeControlKeepNewlines } from './report/sanitize.js';
@@ -210,7 +211,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     if (err instanceof NoLockfileError) fail(err.message);
     fail(err instanceof Error ? err.message : String(err));
   }
-  // Where a future `lock.warnings` would be printed (stderr, escaped).
+  for (const warning of lock.warnings ?? []) {
+    process.stderr.write(`dep-cooldown: ${escapeControlKeepNewlines(warning)}\n`);
+  }
 
   const filters = [flags['only-direct'] ? '--only-direct' : '', flags.prod ? '--prod' : ''].filter(Boolean);
   const selected = selectEntries(lock, { onlyDirect: flags['only-direct'], prodOnly: flags.prod });
@@ -232,6 +235,27 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 
   const registryConfig = resolveRegistry(cwd, flags.registry);
+
+  // The parser already checked that each `resolved` names this package and
+  // version; only here is the registry known, so the host is checked here. A
+  // date from the registry says nothing about a tarball fetched from elsewhere.
+  const foreignHosts = new Map<string, number>();
+  for (const entry of selected) {
+    if (entry.unverifiable || !entry.resolved) continue;
+    const why = verifyResolved(entry.name, entry.version, entry.resolved, registryFor(entry.name, registryConfig));
+    if (!why) continue;
+    entry.unverifiable = why;
+    if (why.startsWith('resolved from ')) {
+      const host = new URL(entry.resolved.trim()).host;
+      foreignHosts.set(host, (foreignHosts.get(host) ?? 0) + 1);
+    }
+  }
+  for (const [host, count] of foreignHosts) {
+    process.stderr.write(
+      `dep-cooldown: ${count} package(s) were resolved from ${escapeControl(host)}, not from the registry being asked. ` +
+        `If that is your registry or mirror, pass --registry https://${escapeControl(host)}/ (or set it in .npmrc).\n`,
+    );
+  }
   const palette = pickPalette({ noColor: flags['no-color'], stream: process.stdout });
   const interactive = Boolean(process.stdout.isTTY) && !flags.json;
 

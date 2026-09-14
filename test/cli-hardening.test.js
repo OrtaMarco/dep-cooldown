@@ -595,3 +595,42 @@ describe('registry URL in the report', () => {
     }
   });
 });
+
+describe('resolved host and lockfile warnings', () => {
+  test('a tarball resolved from another host is unverified, exits 3 and names the host once', async () => {
+    const dir = await project(['old', 'old2']);
+    const path = join(dir, 'package-lock.json');
+    const lock = JSON.parse(await readFile(path, 'utf8'));
+    for (const [key, entry] of Object.entries(lock.packages)) {
+      if (key) entry.resolved = entry.resolved.replace(registry, 'https://mirror.example.test');
+    }
+    await writeFile(path, JSON.stringify(lock, null, 2));
+
+    const { code, stdout, stderr } = await audit(dir);
+    assert.equal(code, 3, stdout + stderr);
+    assert.match(stdout, /resolved from mirror\.example\.test/);
+    const hints = stderr.split('\n').filter((l) => l.includes('were resolved from mirror.example.test'));
+    assert.equal(hints.length, 1, stderr);
+    assert.match(hints[0], /^dep-cooldown: 2 package\(s\)/);
+    assert.match(hints[0], /--registry https:\/\/mirror\.example\.test\//);
+
+    const { code: allowed } = await audit(dir, ['--allow-unknown']);
+    assert.equal(allowed, 0);
+  });
+
+  test('the same lockfile audited against its own host is fine', async () => {
+    const dir = await project(['old']);
+    const { code, stderr } = await audit(dir);
+    assert.equal(code, 0, stderr);
+    assert.doesNotMatch(stderr, /were resolved from/);
+  });
+
+  test('lockfile warnings reach stderr', async () => {
+    const dir = await project(['old']);
+    const lock = await readFile(join(dir, 'package-lock.json'), 'utf8');
+    await writeFile(join(dir, 'npm-shrinkwrap.json'), lock);
+    const { code, stderr } = await audit(dir);
+    assert.equal(code, 0, stderr);
+    assert.match(stderr, /^dep-cooldown: .*npm-shrinkwrap\.json/m);
+  });
+});
