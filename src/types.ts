@@ -13,6 +13,21 @@ export interface LockEntry {
    * cannot tell (Yarn classic).
    */
   dev: boolean | null;
+  /**
+   * Set when the lockfile resolves this entry to something other than the
+   * registry tarball for `name@version` (another host, another file name), so
+   * the registry's publish date would describe a different artifact. The audit
+   * reports it as unverified instead of looking the date up.
+   */
+  unverifiable?: string;
+}
+
+/** A lockfile entry with no registry publish date to look up. */
+export interface SkippedEntry {
+  name: string;
+  /** The locator as the lockfile wrote it, e.g. `git+ssh://…` or `file:../x`. */
+  spec: string;
+  reason: 'git' | 'file' | 'link' | 'workspace' | 'tarball' | 'other';
 }
 
 export interface ParsedLockfile {
@@ -24,6 +39,8 @@ export interface ParsedLockfile {
   /** Last modification time of the lockfile, ISO 8601. */
   mtime: string;
   entries: LockEntry[];
+  /** Entries left out of `entries` because nothing in a registry dates them. */
+  skipped?: SkippedEntry[];
 }
 
 /** The slice of a packument we actually need, and the only thing we cache. */
@@ -81,7 +98,11 @@ export interface AuditResult {
     young: number;
     deprecated: number;
     withProvenance: number;
+    /** Rows with no usable publish date: registry errors, unverifiable entries, bad dates. */
     unknown: number;
+    /** Lockfile entries with no registry publish date (git, file:, link:, workspaces…). */
+    skipped: number;
   };
   rows: AuditRow[];
+  skipped: SkippedEntry[];
 }

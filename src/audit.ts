@@ -86,7 +86,9 @@ export function buildAudit(
       deprecated: rows.filter((r) => r.deprecated).length,
       withProvenance: rows.filter((r) => r.provenance === true).length,
       unknown: rows.filter((r) => r.ageDays === null).length,
+      skipped: lock.skipped?.length ?? 0,
     },
     rows,
+    skipped: lock.skipped ?? [],
   };
 }
