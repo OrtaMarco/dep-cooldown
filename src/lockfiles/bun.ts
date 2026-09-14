@@ -1,16 +1,21 @@
-import type { LockEntry, ParsedLockfile } from '../types.js';
+import type { ParsedLockfile } from '../types.js';
+import { LockCollector, checkResolvedShape, classifySpec } from './resolved.js';
 
 /**
  * `bun.lock` is JSONC: it carries trailing commas, and Bun reserves the right
  * to write comments. `JSON.parse` refuses both, so strip them first. The
  * scanner is string- and escape-aware so that a `//` inside a version range or
- * an integrity hash survives.
+ * an integrity hash survives, and it drops trailing commas itself, so a `, }`
+ * inside a string is left alone.
  */
 export function stripJsonc(input: string): string {
-  let out = '';
+  // Chunks rather than one string, so dropping a comma is O(1) on big lockfiles.
+  const out: string[] = [];
   let inString = false;
   let inLine = false;
   let inBlock = false;
+  // Index in `out` of a comma followed so far only by blanks and comments.
+  let pendingComma = -1;
 
   for (let i = 0; i < input.length; i++) {
     const c = input[i]!;
@@ -19,7 +24,7 @@ export function stripJsonc(input: string): string {
     if (inLine) {
       if (c === '\n') {
         inLine = false;
-        out += c;
+        out.push(c);
       }
       continue;
     }
@@ -31,21 +36,16 @@ export function stripJsonc(input: string): string {
       continue;
     }
     if (inString) {
-      out += c;
+      out.push(c);
       if (c === '\\') {
         // Copy the escaped character verbatim so `\"` does not close the string.
         if (next !== undefined) {
-          out += next;
+          out.push(next);
           i++;
         }
       } else if (c === '"') {
         inString = false;
       }
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      out += c;
       continue;
     }
     if (c === '/' && next === '/') {
@@ -58,11 +58,21 @@ export function stripJsonc(input: string): string {
       i++;
       continue;
     }
-    out += c;
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      out.push(c);
+      continue;
+    }
+    // The first significant character after a comma settles it.
+    if (pendingComma !== -1) {
+      if (c === '}' || c === ']') out[pendingComma] = '';
+      pendingComma = -1;
+    }
+    if (c === '"') inString = true;
+    if (c === ',') pendingComma = out.length;
+    out.push(c);
   }
 
-  // Trailing commas, now that strings and comments are out of the way.
-  return out.replace(/,(\s*[}\]])/g, '$1');
+  return out.join('');
 }
 
 interface BunLock {
@@ -80,50 +90,81 @@ interface BunLock {
   packages?: Record<string, unknown[]>;
 }
 
-/** `@scope/name@1.2.3` -> `{name, version}`; anything non-registry -> null. */
-function splitLocator(locator: string): { name: string; version: string } | null {
-  const at = locator.lastIndexOf('@');
-  if (at <= 0) return null;
-  const name = locator.slice(0, at);
-  const version = locator.slice(at + 1);
-  // `workspace:`, `git+…`, `file:…`, `link:…` have no registry publish date.
-  if (!/^\d/.test(version)) return null;
-  return { name, version };
+/**
+ * `@scope/name@locator` -> `{name, locator}`, split at the first `@` after a
+ * possible scope because git locators carry `@` too.
+ */
+function splitLocator(locator: string): { name: string; spec: string } | null {
+  const at = locator.indexOf('@', 1);
+  return at > 0 ? { name: locator.slice(0, at), spec: locator.slice(at + 1) } : null;
 }
+
+/** A top-level `packages` key is the name its dependents declare (an alias or not). */
+const TOP_LEVEL_KEY = /^(?:@[^/]+\/)?[^/]+$/;
 
 /** Parses Bun's text lockfile (`bun.lock`, lockfileVersion 0 and 1). */
 export function parseBunLock(raw: string, path: string, mtime: string): ParsedLockfile {
   const lock = JSON.parse(stripJsonc(raw)) as BunLock;
 
   const direct = new Set<string>();
-  const directDev = new Set<string>();
+  const prodNames = new Set<string>();
+  const devNames = new Set<string>();
   for (const ws of Object.values(lock.workspaces ?? {})) {
-    for (const n of Object.keys(ws.dependencies ?? {})) direct.add(n);
-    for (const n of Object.keys(ws.optionalDependencies ?? {})) direct.add(n);
-    for (const n of Object.keys(ws.peerDependencies ?? {})) direct.add(n);
-    for (const n of Object.keys(ws.devDependencies ?? {})) {
-      direct.add(n);
-      directDev.add(n);
+    for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'] as const) {
+      for (const n of Object.keys(ws[field] ?? {})) {
+        direct.add(n);
+        (field === 'devDependencies' ? devNames : prodNames).add(n);
+      }
     }
   }
 
-  const entries: LockEntry[] = [];
-  const seen = new Set<string>();
-  for (const value of Object.values(lock.packages ?? {})) {
+  const out = new LockCollector();
+  for (const [key, value] of Object.entries(lock.packages ?? {})) {
     const locator = Array.isArray(value) ? value[0] : undefined;
     if (typeof locator !== 'string') continue;
-    const parsed = splitLocator(locator);
-    if (!parsed) continue;
-    const id = `${parsed.name}@${parsed.version}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const isDirect = direct.has(parsed.name);
-    entries.push({
-      name: parsed.name,
-      version: parsed.version,
-      direct: isDirect,
-      dev: isDirect ? directDev.has(parsed.name) : null,
-    });
+    const split = splitLocator(locator);
+    if (!split) {
+      out.skip(key, locator, 'other');
+      continue;
+    }
+    const { name, spec } = split;
+
+    let version: string | null = null;
+    let resolved: string | undefined;
+    if (/^\d/.test(spec)) {
+      version = spec;
+    } else if (/^https?:\/\//i.test(spec)) {
+      // A tarball dependency: audited when the URL is the registry tarball.
+      const shape = checkResolvedShape(name, null, spec);
+      if (shape.kind === 'ok') {
+        version = shape.version;
+        resolved = spec;
+      } else {
+        out.skip(name, spec, shape.kind === 'skip' ? shape.reason : 'tarball');
+        continue;
+      }
+    } else {
+      // `workspace:`, `github:`, `git+…`, `file:…`, `link:…`: no publish date.
+      if (spec !== 'workspace:' && spec !== 'workspace:.') {
+        out.skip(name, spec, classifySpec(spec) ?? 'other');
+      }
+      continue;
+    }
+
+    const declared = [name, ...(TOP_LEVEL_KEY.test(key) && key !== name ? [key] : [])].filter((n) =>
+      direct.has(n),
+    );
+    const isDirect = declared.length > 0;
+    out.addResolved(
+      {
+        name,
+        version,
+        direct: isDirect,
+        // Dev only when no workspace declares it outside devDependencies.
+        dev: isDirect ? declared.every((n) => devNames.has(n) && !prodNames.has(n)) : null,
+      },
+      resolved,
+    );
   }
 
   return {
@@ -131,6 +172,7 @@ export function parseBunLock(raw: string, path: string, mtime: string): ParsedLo
     path,
     format: `bun.lock v${lock.lockfileVersion ?? '?'}`,
     mtime,
-    entries,
+    entries: out.entries,
+    skipped: out.skipped,
   };
 }

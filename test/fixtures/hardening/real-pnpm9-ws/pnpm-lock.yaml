@@ -1,0 +1,128 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      bar:
+        specifier: npm:ms@2.1.2
+        version: ms@2.1.2
+      foo:
+        specifier: npm:is-number@7.0.0
+        version: is-number@7.0.0
+      has-flag:
+        specifier: https://registry.npmjs.org/has-flag/-/has-flag-3.0.0.tgz
+        version: 3.0.0
+      left-pad:
+        specifier: github:stevemao/left-pad#v1.3.0
+        version: git+https://github.com/stevemao/left-pad.git#eb115f2f0bee68ee3534eac37f50218778ca4507
+      link-lib:
+        specifier: link:./link-lib
+        version: link:link-lib
+      local-lib:
+        specifier: file:./local-lib
+        version: file:local-lib
+      ms:
+        specifier: 2.1.3
+        version: 2.1.3
+      react:
+        specifier: 18.2.0
+        version: 18.2.0
+      use-sync-external-store:
+        specifier: 1.2.0
+        version: 1.2.0(react@18.2.0)
+      wsdep:
+        specifier: workspace:*
+        version: link:packages/wsdep
+    devDependencies:
+      fresh:
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/app:
+    dependencies:
+      fresh:
+        specifier: 1.0.0
+        version: 1.0.0
+      ms:
+        specifier: 2.1.3
+        version: 2.1.3
+
+  packages/wsdep: {}
+
+packages:
+
+  fresh@1.0.0:
+    resolution: {integrity: sha512-CXbd7Pq2ZU4uK2K8pIsduMqFH27c6DhruWq42tmJjQ5a3ouq1pZNjdSOaYuT2Vx2UpU6st5Cx9ye0GWnnMMnSg==}
+    engines: {node: '>= 0.8'}
+
+  has-flag@3.0.0:
+    resolution: {integrity: sha512-sKJf1+ceQBr4SMkvQnBDNDtf4TXpVhVGateu0t918bl30FnbE2m4vNLX+VWe/dpjlb+HugGYzW7uQXH98HPEYw==}
+    engines: {node: '>=4'}
+
+  is-number@7.0.0:
+    resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
+    engines: {node: '>=0.12.0'}
+
+  js-tokens@4.0.0:
+    resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
+
+  left-pad@git+https://github.com/stevemao/left-pad.git#eb115f2f0bee68ee3534eac37f50218778ca4507:
+    resolution: {commit: eb115f2f0bee68ee3534eac37f50218778ca4507, repo: https://github.com/stevemao/left-pad.git, type: git}
+    version: 1.3.0
+
+  local-lib@file:local-lib:
+    resolution: {directory: local-lib, type: directory}
+
+  loose-envify@1.4.0:
+    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
+    hasBin: true
+
+  ms@2.1.2:
+    resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
+
+  ms@2.1.3:
+    resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+  react@18.2.0:
+    resolution: {integrity: sha512-/3IjMdb2L9QbBdWiW5e3P2/npwMBaU9mHCSCUzNln0ZCYbcfTsGbTJrU/kGemdH2IWmB2ioZ+zkxtmq6g09fGQ==}
+    engines: {node: '>=0.10.0'}
+
+  use-sync-external-store@1.2.0:
+    resolution: {integrity: sha512-eEgnFxGQ1Ife9bzYs6VLi8/4X6CObHMw9Qr9tPY43iKwsPw8xE8+EFsf/2cFZ5S3esXgpWgtSCtLNS41F+sKPA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0
+
+snapshots:
+
+  fresh@1.0.0: {}
+
+  has-flag@3.0.0: {}
+
+  is-number@7.0.0: {}
+
+  js-tokens@4.0.0: {}
+
+  left-pad@git+https://github.com/stevemao/left-pad.git#eb115f2f0bee68ee3534eac37f50218778ca4507: {}
+
+  local-lib@file:local-lib: {}
+
+  loose-envify@1.4.0:
+    dependencies:
+      js-tokens: 4.0.0
+
+  ms@2.1.2: {}
+
+  ms@2.1.3: {}
+
+  react@18.2.0:
+    dependencies:
+      loose-envify: 1.4.0
+
+  use-sync-external-store@1.2.0(react@18.2.0):
+    dependencies:
+      react: 18.2.0

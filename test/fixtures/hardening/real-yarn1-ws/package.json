@@ -1,0 +1,16 @@
+{
+  "name": "root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "ms": "2.1.3",
+    "foo": "npm:is-number@7.0.0",
+    "local-lib": "file:./local-lib",
+    "has-flag": "https://registry.npmjs.org/has-flag/-/has-flag-3.0.0.tgz",
+    "left-pad": "github:stevemao/left-pad#v1.3.0"
+  },
+  "devDependencies": {
+    "fresh": "1.0.0"
+  }
+}

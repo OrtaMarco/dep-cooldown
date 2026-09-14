@@ -151,6 +151,14 @@ describe('parsePnpmKey', () => {
     // v9 appends the peer set it was resolved against.
     ['@babel/core@7.25.0(supports-color@8.1.1)', { name: '@babel/core', version: '7.25.0' }],
     ['/vue@3.4.0(typescript@5.4.5)', { name: 'vue', version: '3.4.0' }],
+    // v5.x appends the peer set after an underscore, `/` in peer names as `+`.
+    ['/fresh/1.0.0_ms@2.1.3', { name: 'fresh', version: '1.0.0' }],
+    ['/@scope/a/1.0.0_@babel+core@7.0.0', { name: '@scope/a', version: '1.0.0' }],
+    ['/use-sync-external-store/1.2.0_react@18.2.0', { name: 'use-sync-external-store', version: '1.2.0' }],
+    ['/react-dom/18.2.0_react@18.2.0+scheduler@0.23.0', { name: 'react-dom', version: '18.2.0' }],
+    ['/foo/1.0.0-beta.1_bar@2.0.0', { name: 'foo', version: '1.0.0-beta.1' }],
+    ['/lodash.merge/4.6.2', { name: 'lodash.merge', version: '4.6.2' }],
+    ['/registry.example.com/ms/2.1.3', { name: 'ms', version: '2.1.3' }],
   ];
   for (const [key, expected] of cases) {
     test(`parses ${key}`, () => {
@@ -164,6 +172,10 @@ describe('parsePnpmKey', () => {
       'foo@file:../bar.tgz',
       'foo@git+ssh://git@github.com/o/r.git',
       'my-app@workspace:packages/app',
+      // v5/v6 git and tarball keys; a commit that starts with a digit is no version.
+      '@codeload.github.com/a/left-pad/tar.gz/0123456789abcdef',
+      'github.com/a/other/0123456789abcdef',
+      'file:local-lib',
     ]) {
       assert.equal(parsePnpmKey(key), null, key);
     }
@@ -191,5 +203,20 @@ describe('stripJsonc', () => {
   test('survives escaped quotes', () => {
     const input = '{"a": "he said \\"//\\" loudly",}';
     assert.equal(JSON.parse(stripJsonc(input)).a, 'he said "//" loudly');
+  });
+
+  test('a comma before a closing brace inside a string is text, not a trailing comma', () => {
+    const input = '{"note": "note: x, }", "list": ["a, ]", "b,\\n}",],}';
+    assert.deepEqual(JSON.parse(stripJsonc(input)), { note: 'note: x, }', list: ['a, ]', 'b,\n}'] });
+  });
+
+  test('an escaped quote does not end the string before a comma-brace', () => {
+    const input = '{"a": "q\\", }"}';
+    assert.equal(JSON.parse(stripJsonc(input)).a, 'q", }');
+  });
+
+  test('a trailing comma followed by comments and whitespace is still removed', () => {
+    const input = '{"a": [1, /* one */ ], "b": 2, // last\n  /* end */\n}';
+    assert.deepEqual(JSON.parse(stripJsonc(input)), { a: [1], b: 2 });
   });
 });

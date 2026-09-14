@@ -1,5 +1,7 @@
+import { posix } from 'node:path';
 import { parseAllDocuments } from 'yaml';
-import type { LockEntry, ParsedLockfile } from '../types.js';
+import type { ParsedLockfile } from '../types.js';
+import { LockCollector, classifySpec, type SkipReason } from './resolved.js';
 
 interface ImporterSpec {
   specifier?: string;
@@ -7,62 +9,105 @@ interface ImporterSpec {
 }
 type DepBlock = Record<string, ImporterSpec | string>;
 
-interface PnpmLock {
-  lockfileVersion?: string | number;
-  importers?: Record<
-    string,
-    {
-      dependencies?: DepBlock;
-      devDependencies?: DepBlock;
-      optionalDependencies?: DepBlock;
-      // Only in the environment document pnpm 11+ writes first.
-      configDependencies?: DepBlock;
-      packageManagerDependencies?: DepBlock;
-    }
-  >;
+interface Importer {
   dependencies?: DepBlock;
   devDependencies?: DepBlock;
   optionalDependencies?: DepBlock;
-  packages?: Record<string, { dev?: boolean; resolution?: Record<string, unknown> }>;
-  snapshots?: Record<string, unknown>;
+  // Only in the environment document pnpm 11+ writes first.
+  configDependencies?: DepBlock;
+  packageManagerDependencies?: DepBlock;
+  // v5: specifiers live apart from the resolved versions.
+  specifiers?: Record<string, string>;
 }
+
+interface PnpmPackage {
+  dev?: boolean;
+  name?: string;
+  version?: string;
+  resolution?: {
+    tarball?: unknown;
+    type?: unknown;
+    commit?: unknown;
+    directory?: unknown;
+  };
+}
+
+interface PnpmLock extends Importer {
+  lockfileVersion?: string | number;
+  importers?: Record<string, Importer>;
+  packages?: Record<string, PnpmPackage | null>;
+  snapshots?: Record<string, PnpmPackage | null>;
+}
+
+/**
+ * v5 key after the leading slash: `name/1.2.3` or `@scope/name/1.2.3`, then an
+ * optional `_peer@1.0.0+other@2.0.0` suffix. The version must look like semver
+ * so that a git key such as `user/repo/0123abc` is not read as one.
+ */
+const V5_KEY =
+  /^((?:@[^/@]+\/)?[^/@]+)\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?:_.+)?$/;
 
 /**
  * Turns a pnpm package key into `{name, version}`.
  *
  * Handles the three shapes pnpm has shipped:
  *   v9  `@scope/name@1.2.3(peer@4.5.6)`
- *   v6  `/@scope/name@1.2.3`
- *   v5  `/@scope/name/1.2.3`
+ *   v6  `/@scope/name@1.2.3(peer@4.5.6)`
+ *   v5  `/@scope/name/1.2.3_peer@4.5.6`
+ *
+ * The v5 shape is tried first: its peer suffix carries `@`, which the v6/v9
+ * split would otherwise cut on (`/fresh/1.0.0_ms@2.1.3` as `fresh/1.0.0_ms`).
  */
 export function parsePnpmKey(key: string): { name: string; version: string } | null {
   let k = key.startsWith('/') ? key.slice(1) : key;
-  // Peer-dependency suffix: `foo@1.0.0(bar@2.0.0)`.
-  const paren = k.indexOf('(');
-  if (paren !== -1) k = k.slice(0, paren);
   // A registry URL prefix can precede the name in some lockfiles.
   const registryPrefix = k.match(/^(?:[a-z]+:\/\/)?[^/]+\.[a-z]{2,}\/(?=@|[a-z])/i);
   if (registryPrefix && !k.startsWith('@')) k = k.slice(registryPrefix[0].length);
 
-  const at = k.lastIndexOf('@');
+  const v5 = k.match(V5_KEY);
+  if (v5) return { name: v5[1]!, version: v5[2]! };
+
+  // Peer-dependency suffix: `foo@1.0.0(bar@2.0.0)`.
+  const paren = k.indexOf('(');
+  if (paren !== -1) k = k.slice(0, paren);
+
+  const at = k.indexOf('@', 1);
   if (at > 0) {
     const name = k.slice(0, at);
     const version = k.slice(at + 1);
     if (/^\d/.test(version)) return { name, version };
-    return null; // git:, file:, link:, https: — nothing to look up.
   }
-  // v5 shape: split on the last slash.
-  const slash = k.lastIndexOf('/');
-  if (slash > 0) {
-    const version = k.slice(slash + 1);
-    if (/^\d/.test(version)) return { name: k.slice(0, slash), version };
-  }
-  return null;
+  return null; // git, file:, link:, tarball URLs — nothing to look up.
 }
 
-function namesOf(block: DepBlock | undefined): string[] {
-  return block ? Object.keys(block) : [];
+/** `name@locator` -> `{name, locator}`; a key with no `@name` part is all locator. */
+function splitKey(key: string): { name: string; locator: string } {
+  const k = key.startsWith('/') ? key.slice(1) : key;
+  const at = k.indexOf('@', 1);
+  return at > 0 ? { name: k.slice(0, at), locator: k.slice(at + 1) } : { name: k, locator: k };
 }
+
+/**
+ * Why a `packages` entry has no registry date, or `null` when it is a registry
+ * package. The resolution is read first: v5/v6 git and tarball keys can look
+ * like `name/version`.
+ */
+function nonRegistryReason(parsed: boolean, key: string, pkg: PnpmPackage): SkipReason | null {
+  const res = pkg.resolution ?? {};
+  if (res.type === 'git' || typeof res.commit === 'string') return 'git';
+  if (res.type === 'directory' || typeof res.directory === 'string') return 'file';
+  if (parsed) return null;
+  if (typeof res.tarball === 'string') return classifySpec(res.tarball) ?? 'tarball';
+  return classifySpec(splitKey(key).locator) ?? 'other';
+}
+
+const DEP_BLOCKS = [
+  ['dependencies', false],
+  ['optionalDependencies', false],
+  ['configDependencies', false],
+  ['packageManagerDependencies', false],
+  ['devDependencies', true],
+] as const;
 
 /**
  * pnpm 11+ can write two YAML documents into one `pnpm-lock.yaml`: first an
@@ -87,26 +132,40 @@ export function parsePnpmLock(raw: string, path: string, mtime: string): ParsedL
   // The project document comes last; the environment one carries the same version.
   const rawVersion = String(locks.at(-1)?.lockfileVersion ?? '');
   const major = rawVersion.split('.')[0] ?? '?';
+  // v5 and v6 write `dev: true` or `dev: false` for packages used by one side
+  // only, and omit it for packages both sides use.
+  const legacyDevFlags = Number(major) <= 6;
 
+  const out = new LockCollector();
   const direct = new Set<string>();
-  const directDev = new Set<string>();
-  const sources: Record<string, unknown>[] = [];
+  const prodNames = new Set<string>();
+  const devNames = new Set<string>();
+  const sources: Record<string, PnpmPackage | null>[] = [];
+
+  const importersOf = (lock: PnpmLock): [string, Importer][] =>
+    // Single-project v5/v6 lockfiles keep the root importer at the top level.
+    lock.importers ? Object.entries(lock.importers) : [['.', lock]];
+  const importerIds = new Set(locks.flatMap((lock) => importersOf(lock).map(([id]) => posix.normalize(id))));
+
   for (const lock of locks) {
-    for (const imp of Object.values(lock.importers ?? {})) {
-      for (const n of namesOf(imp.dependencies)) direct.add(n);
-      for (const n of namesOf(imp.optionalDependencies)) direct.add(n);
-      for (const n of namesOf(imp.configDependencies)) direct.add(n);
-      for (const n of namesOf(imp.packageManagerDependencies)) direct.add(n);
-      for (const n of namesOf(imp.devDependencies)) {
-        direct.add(n);
-        directDev.add(n);
+    for (const [id, imp] of importersOf(lock)) {
+      for (const [field, isDev] of DEP_BLOCKS) {
+        for (const [alias, spec] of Object.entries(imp[field] ?? {})) {
+          const version = typeof spec === 'string' ? spec : spec?.version;
+          if (typeof version !== 'string') continue;
+          const specifier = typeof spec === 'string' ? imp.specifiers?.[alias] : spec?.specifier;
+          if (version.startsWith('link:')) {
+            const target = posix.normalize(posix.join(id, version.slice('link:'.length)));
+            const toWorkspace = specifier?.startsWith('workspace:') || importerIds.has(target);
+            out.skip(alias, version, toWorkspace ? 'workspace' : 'link');
+            continue;
+          }
+          // An alias resolves to `real@1.2.3` (v6+) or `/real/1.2.3` (v5).
+          const name = /^\d/.test(version) ? alias : (parsePnpmKey(version)?.name ?? alias);
+          direct.add(name);
+          (isDev ? devNames : prodNames).add(name);
+        }
       }
-    }
-    for (const n of namesOf(lock.dependencies)) direct.add(n);
-    for (const n of namesOf(lock.optionalDependencies)) direct.add(n);
-    for (const n of namesOf(lock.devDependencies)) {
-      direct.add(n);
-      directDev.add(n);
     }
     // v9 moved the resolved set to `snapshots`, but `packages` still lists every
     // package@version once, which is exactly what we need.
@@ -114,25 +173,35 @@ export function parsePnpmLock(raw: string, path: string, mtime: string): ParsedL
     if (source) sources.push(source);
   }
 
-  const entries: LockEntry[] = [];
-  const seen = new Set<string>();
-
   for (const [key, node] of sources.flatMap((source) => Object.entries(source))) {
+    const pkg: PnpmPackage = node && typeof node === 'object' ? node : {};
     const parsed = parsePnpmKey(key);
-    if (!parsed) continue;
-    const id = `${parsed.name}@${parsed.version}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const isDirect = direct.has(parsed.name);
-    // v6 and older tag every package with `dev`. v9 dropped it, so we can only
-    // speak for the direct dependencies the importers declare.
-    let dev: boolean | null = null;
-    if (node && typeof (node as { dev?: boolean }).dev === 'boolean') {
-      dev = (node as { dev: boolean }).dev;
-    } else if (isDirect) {
-      dev = directDev.has(parsed.name);
+    const reason = nonRegistryReason(parsed !== null, key, pkg);
+    if (!parsed || reason) {
+      const tarball = pkg.resolution?.tarball;
+      out.skip(
+        pkg.name ?? splitKey(key).name,
+        typeof tarball === 'string' ? tarball : splitKey(key).locator,
+        reason ?? 'other',
+      );
+      continue;
     }
-    entries.push({ name: parsed.name, version: parsed.version, direct: isDirect, dev });
+    const isDirect = direct.has(parsed.name);
+    let dev: boolean | null = null;
+    if (typeof pkg.dev === 'boolean') {
+      dev = pkg.dev;
+    } else if (legacyDevFlags) {
+      dev = false;
+    } else if (isDirect) {
+      // v9 dropped the flag: only the importers can speak, for direct packages.
+      // One importer needing it in production keeps it out of `--prod` drops.
+      dev = devNames.has(parsed.name) && !prodNames.has(parsed.name);
+    }
+    const tarball = pkg.resolution?.tarball;
+    out.addResolved(
+      { name: parsed.name, version: parsed.version, direct: isDirect, dev },
+      typeof tarball === 'string' ? tarball : undefined,
+    );
   }
 
   return {
@@ -140,6 +209,7 @@ export function parsePnpmLock(raw: string, path: string, mtime: string): ParsedL
     path,
     format: `pnpm-lock.yaml v${major}`,
     mtime,
-    entries,
+    entries: out.entries,
+    skipped: out.skipped,
   };
 }

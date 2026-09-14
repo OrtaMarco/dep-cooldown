@@ -1,6 +1,7 @@
 export type {
   Manager,
   LockEntry,
+  SkippedEntry,
   ParsedLockfile,
   PackageMeta,
   VersionMeta,
@@ -18,6 +19,7 @@ export {
   stripJsonc,
   NoLockfileError,
 } from './lockfiles/index.js';
+export { verifyResolved, checkResolvedShape, type ShapeCheck } from './lockfiles/resolved.js';
 
 export { buildAudit, ageInDays, type AuditOptions } from './audit.js';
 

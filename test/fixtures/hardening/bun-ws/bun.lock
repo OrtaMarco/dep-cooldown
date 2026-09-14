@@ -1,0 +1,10 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "name": "root", "devDependencies": { "fresh": "1.0.0" } },
+    "packages/app": { "name": "app", "dependencies": { "fresh": "1.0.0" } },
+  },
+  "packages": {
+    "fresh": ["fresh@1.0.0", "", {}, "sha512-x"],
+  }
+}
