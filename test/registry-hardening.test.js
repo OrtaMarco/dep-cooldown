@@ -647,6 +647,21 @@ describe('hardening 6: disk cache', () => {
     assert.equal(await readFile(join(dir, 'subdir', `inner-${'1'.repeat(16)}.json`), 'utf8'), '{}');
   });
 
+  test('clearCache does not follow a cache directory that is a symlink, trailing slash or not', async () => {
+    const target = await mkdtemp(join(tmpdir(), 'dep-cooldown-target-'));
+    const own = join(target, `ms-${'4'.repeat(16)}.json`);
+    await writeFile(own, '{}');
+    const parent = await mkdtemp(join(tmpdir(), 'dep-cooldown-linkparent-'));
+    const link = join(parent, 'cache');
+    await symlink(target, link);
+
+    for (const dir of [link, `${link}/`, `${link}//`]) {
+      const result = await lib.clearCache(dir);
+      assert.deepEqual(result, { removed: 0, kept: 0, removedDir: false }, dir);
+      assert.equal(await readFile(own, 'utf8'), '{}', dir);
+    }
+  });
+
   test('clearCache removes the directory once only its own files were there', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'dep-cooldown-cache-'));
     const dir = join(parent, 'dep-cooldown');

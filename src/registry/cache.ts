@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { lstat, mkdir, open, readdir, readFile, rename, rmdir, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { PackageMeta, VersionMeta } from '../types.js';
 
 /** `~/.cache/dep-cooldown`, or `$XDG_CACHE_HOME/dep-cooldown`. */
@@ -129,9 +129,12 @@ export function diskCache(dir = cacheDir()): Cache {
  * cannot turn `--clear-cache` into `rm -rf $HOME`.
  */
 export async function clearCache(
-  dir = cacheDir(),
+  dirArg = cacheDir(),
 ): Promise<{ removed: number; kept: number; removedDir: boolean }> {
   const result = { removed: 0, kept: 0, removedDir: false };
+  // `lstat('link/')` follows the link: the trailing separator names the
+  // directory it points to. resolve() drops it, so the link itself is checked.
+  const dir = resolve(dirArg);
   try {
     if (!(await lstat(dir)).isDirectory()) return result;
   } catch {
