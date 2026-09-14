@@ -1,0 +1,54 @@
+name: publish
+
+# Publishes to npm when a `vX.Y.Z` tag is pushed.
+#
+# No token: npm trusts this workflow through Trusted Publishing (OIDC). The
+# relationship is registered once with
+#   npm trust github dep-cooldown --file publish.yml --repo OrtaMarco/dep-cooldown --allow-publish
+# and has to be registered again if this file is renamed. `id-token: write` is
+# what lets Actions mint the OIDC token npm exchanges, and provenance comes with
+# it: npm shows which commit and which workflow built the tarball.
+#
+# That same permission is how Shai-Hulud published from TanStack's own runner in
+# May 2026, so nothing in this job runs a third-party lifecycle script: every
+# install uses --ignore-scripts, and the repo's .npmrc keeps the 7-day cooldown.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Trusted Publishing needs npm >= 11.5.1, and Node 22 ships npm 10.
+      - run: npm install -g --ignore-scripts npm@^11.5.1
+
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+
+      - name: The tag must match package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag v$TAG does not match version $PKG in package.json" >&2
+            exit 1
+          fi
+
+      # prepublishOnly builds and runs the tests, so the tarball is the build
+      # that just passed them. --ignore-scripts would skip that too.
+      - run: npm publish --access public
