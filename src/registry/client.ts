@@ -382,12 +382,16 @@ export function createRegistryClient(options: ClientOptions) {
     }
   }
 
-  async function one(name: string): Promise<FetchOutcome> {
+  async function one(name: string, wanted: readonly string[] = []): Promise<FetchOutcome> {
     // Checked before the cache and the network: an invalid name makes no request.
     if (!isValidPackageName(name)) return { error: 'invalid package name', cached: false };
     const registry = registryFor(name, config);
     const hit = await cache.get(registry, name, ttlMs);
-    if (hit) return { meta: hit, cached: true };
+    // A fresh record that predates a version the lockfile holds (installed
+    // today, cached yesterday) would report it as not listed: ask the registry.
+    if (hit && (offline || wanted.every((v) => Object.hasOwn(hit.time, v)))) {
+      return { meta: hit, cached: true };
+    }
     if (offline) {
       return { error: 'not in cache (--offline)', cached: false };
     }
@@ -434,12 +438,19 @@ export function createRegistryClient(options: ClientOptions) {
   }
 
   return {
-    /** Fetches every name once, with bounded concurrency. */
-    async fetchAll(names: string[]): Promise<Map<string, FetchOutcome>> {
+    /**
+     * Fetches every name once, with bounded concurrency. `wanted` lists the
+     * versions the caller will look up per name: a cached record that lacks one
+     * of them is refetched instead of trusted (unless offline).
+     */
+    async fetchAll(
+      names: string[],
+      wanted?: ReadonlyMap<string, readonly string[]>,
+    ): Promise<Map<string, FetchOutcome>> {
       const unique = [...new Set(names)];
       let done = 0;
       const outcomes = await pool(unique, concurrency, async (name) => {
-        const outcome = await one(name);
+        const outcome = await one(name, wanted?.get(name));
         options.onProgress?.(++done, unique.length);
         return outcome;
       });

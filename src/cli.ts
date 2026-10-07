@@ -275,7 +275,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       : undefined,
   });
 
-  const meta = names.length > 0 ? await client.fetchAll(names) : new Map();
+  const wanted = new Map<string, string[]>();
+  for (const entry of selected) {
+    if (entry.unverifiable) continue;
+    const versions = wanted.get(entry.name);
+    if (versions) versions.push(entry.version);
+    else wanted.set(entry.name, [entry.version]);
+  }
+  const meta = names.length > 0 ? await client.fetchAll(names, wanted) : new Map();
 
   const result = buildAudit(lock, meta, {
     minAgeDays: minAge,

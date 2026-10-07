@@ -190,6 +190,38 @@ describe('registry client', () => {
     assert.equal(mock.calls.length, first, 'second run should be served from cache');
   });
 
+  test('a fresh cache entry without a version the lockfile needs is refetched', async () => {
+    const cache = memoryCache();
+    const mock = mockRegistry();
+    const make = (extra = {}) =>
+      createRegistryClient({ config: NO_NPMRC, cache, fetchImpl: mock.impl, ...extra });
+    await make().fetchAll(['ms']);
+    assert.equal(mock.calls.length, 1);
+    // The cached record is fresh but predates 9.9.9: ask for it and go to the registry.
+    const wanted = new Map([['ms', ['9.9.9']]]);
+    const outcomes = await make().fetchAll(['ms'], wanted);
+    assert.equal(mock.calls.length, 2, 'the missing version must trigger a refetch');
+    assert.equal(outcomes.get('ms').cached, false);
+    // A version the cache does have is still served without a request.
+    const known = Object.keys(cache.store.get('https://registry.npmjs.org|ms').time)[0];
+    await make().fetchAll(['ms'], new Map([['ms', [known]]]));
+    assert.equal(mock.calls.length, 2);
+    // Offline never dials out, wanted or not.
+    await make({ offline: true }).fetchAll(['ms'], wanted);
+    assert.equal(mock.calls.length, 2);
+  });
+
+  test('if the refetch fails, the cached record is still served', async () => {
+    const cache = memoryCache();
+    const ok = mockRegistry();
+    await createRegistryClient({ config: NO_NPMRC, cache, fetchImpl: ok.impl }).fetchAll(['ms']);
+    const down = mockRegistry({ fail: new Set(['ms']) });
+    const client = createRegistryClient({ config: NO_NPMRC, cache, fetchImpl: down.impl });
+    const outcomes = await client.fetchAll(['ms'], new Map([['ms', ['9.9.9']]]));
+    assert.equal(outcomes.get('ms').cached, true);
+    assert.ok(outcomes.get('ms').meta);
+  });
+
   test('--offline reports what the cache is missing instead of dialling out', async () => {
     const lock = await detectAndParse(fixture('npm-v3'));
     const cache = memoryCache();
