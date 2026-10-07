@@ -1,6 +1,6 @@
 {
   "name": "dep-cooldown",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Audit the dependency cooldown (min-release-age) of a JavaScript project from its lockfile: publish dates, age in days, provenance, deprecations, and ready-to-paste config for npm, pnpm, Yarn and Bun.",
   "keywords": [
     "cooldown",
